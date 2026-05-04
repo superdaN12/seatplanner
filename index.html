@@ -252,6 +252,83 @@
     pointer-events: none;
     user-select: none;
   }
+
+  /* Print area (off-screen until print mode) */
+  #printArea { display: none; }
+  body.print-mode #sidebar,
+  body.print-mode #toolbar,
+  body.print-mode #canvas-wrap,
+  body.print-mode #pickerOverlay,
+  body.print-mode #editOverlay { display: none !important; }
+  body.print-mode #printArea { display: block; padding: 16px; background: white; }
+  body.print-mode { overflow: auto; height: auto; display: block; }
+
+  @media print {
+    #sidebar, #toolbar, #canvas-wrap, #pickerOverlay, #editOverlay { display: none !important; }
+    body { display: block; height: auto; background: white; }
+    #printArea { display: block !important; padding: 0; }
+    .print-page { page-break-after: always; padding: 0; margin: 0; }
+    .print-page:last-child { page-break-after: auto; }
+    @page { size: A4; margin: 12mm; }
+  }
+  .print-page {
+    background: white;
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid #ddd;
+  }
+  .print-page h2 { margin-top: 0; }
+  #printControls {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 2000;
+    background: white;
+    border-radius: 6px;
+    padding: 10px 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    display: none;
+    gap: 8px;
+    align-items: center;
+  }
+  body.print-mode #printControls { display: flex; }
+  @media print { #printControls { display: none !important; } }
+  .seating-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .seating-table th, .seating-table td {
+    border: 1px solid #d1d5da;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .seating-table th { background: #f6f8fa; }
+  .place-card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8mm;
+  }
+  .place-card {
+    border: 1px solid #888;
+    padding: 14mm 10mm;
+    text-align: center;
+    height: 60mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    page-break-inside: avoid;
+    border-top: 6px solid #888;
+  }
+  .place-card .pc-name { font-size: 22pt; font-weight: 600; }
+  .place-card .pc-table { font-size: 12pt; color: #586069; margin-top: 6mm; }
+  .place-card .pc-notes { font-size: 9pt; color: #888; margin-top: 4mm; font-style: italic; }
+  .print-plan-canvas {
+    transform-origin: 0 0;
+    background: white;
+  }
   .seat {
     position: absolute;
     width: 36px;
@@ -596,6 +673,18 @@
     </div>
   </div>
 
+  <div class="panel">
+    <h3>Drucken / Export</h3>
+    <div class="row" style="flex-wrap:wrap;">
+      <button onclick="printPlan()">Plan drucken</button>
+      <button class="secondary" onclick="exportPng()">PNG</button>
+    </div>
+    <div class="row" style="margin-top:6px; flex-wrap:wrap;">
+      <button class="secondary" onclick="printSeatingList()">Sitzliste</button>
+      <button class="secondary" onclick="printPlaceCards()">Tischkarten</button>
+    </div>
+  </div>
+
   <div class="panel" id="bgPanel">
     <h3>Hintergrundbild</h3>
     <div class="row">
@@ -709,6 +798,13 @@
     <div id="canvas"></div>
   </div>
 </div>
+
+<div id="printControls">
+  <span id="printTitle" style="font-weight:600;"></span>
+  <button onclick="window.print()">Drucken</button>
+  <button class="secondary" onclick="closePrint()">Schließen</button>
+</div>
+<div id="printArea"></div>
 
 <div id="editOverlay" onclick="if(event.target===this) closeEdit()">
   <div id="editModal">
@@ -2517,6 +2613,252 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault(); zoomBy(-0.15);
   } else if ((ev.ctrlKey || ev.metaKey) && ev.key === '0') {
     ev.preventDefault(); zoomReset();
+  }
+});
+
+// --- Print / Export ---
+function planTitle() {
+  const id = planStore.activePlanId;
+  return (planStore.planMeta[id] && planStore.planMeta[id].name) || 'Tischplan';
+}
+
+function openPrintMode(title) {
+  document.getElementById('printTitle').textContent = title;
+  document.body.classList.add('print-mode');
+  window.scrollTo(0, 0);
+}
+
+function closePrint() {
+  document.body.classList.remove('print-mode');
+  document.getElementById('printArea').innerHTML = '';
+}
+
+function planBoundingBox() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const t of state.tables) {
+    const layout = tableLayout(t);
+    minX = Math.min(minX, t.x);
+    minY = Math.min(minY, t.y);
+    maxX = Math.max(maxX, t.x + layout.wrapW);
+    maxY = Math.max(maxY, t.y + layout.wrapH);
+  }
+  for (const e of (state.elements || [])) {
+    minX = Math.min(minX, e.x);
+    minY = Math.min(minY, e.y);
+    maxX = Math.max(maxX, e.x + e.w);
+    maxY = Math.max(maxY, e.y + e.h);
+  }
+  if (!isFinite(minX)) return { x: 0, y: 0, w: 800, h: 600 };
+  const pad = 40;
+  return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+}
+
+function buildPrintPlanNode() {
+  // Clone the canvas content (without bg image transforms etc.)
+  // We render a fresh, untransformed snapshot of the canvas at zoom 1.
+  const bb = planBoundingBox();
+  const wrap = document.createElement('div');
+  wrap.className = 'print-page';
+  const title = document.createElement('h2');
+  title.textContent = planTitle();
+  wrap.appendChild(title);
+
+  // Wrapper centered on page
+  const A4_W_MM = 297 - 24; // landscape A4 minus margins
+  const printablePxApprox = A4_W_MM * 3.78; // ~ px @ 96dpi
+  const scale = Math.min(1, printablePxApprox / bb.w);
+  const inner = document.createElement('div');
+  inner.style.width = (bb.w * scale) + 'px';
+  inner.style.height = (bb.h * scale) + 'px';
+  inner.style.position = 'relative';
+  inner.style.overflow = 'hidden';
+  inner.style.margin = '0 auto';
+
+  const canvasClone = document.getElementById('canvas').cloneNode(true);
+  canvasClone.style.transform = `scale(${scale}) translate(${-bb.x}px, ${-bb.y}px)`;
+  canvasClone.style.transformOrigin = '0 0';
+  canvasClone.classList.add('print-plan-canvas');
+  inner.appendChild(canvasClone);
+
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+function printPlan() {
+  const node = buildPrintPlanNode();
+  const area = document.getElementById('printArea');
+  area.innerHTML = '';
+  area.appendChild(node);
+  openPrintMode('Plan: ' + planTitle());
+}
+
+function printSeatingList() {
+  const area = document.getElementById('printArea');
+  area.innerHTML = '';
+  const page = document.createElement('div');
+  page.className = 'print-page';
+  const title = document.createElement('h2');
+  title.textContent = 'Sitzliste – ' + planTitle();
+  page.appendChild(title);
+
+  if (state.tables.length === 0) {
+    page.appendChild(document.createTextNode('Keine Tische.'));
+  }
+  for (const t of [...state.tables].sort((a,b) => a.name.localeCompare(b.name))) {
+    const h = document.createElement('h3');
+    const occ = Object.keys(t.assignments).filter(k => parseInt(k) < t.seats).length;
+    h.textContent = `${t.name} (${occ}/${t.seats})`;
+    h.style.marginTop = '14px';
+    page.appendChild(h);
+    const tbl = document.createElement('table');
+    tbl.className = 'seating-table';
+    tbl.innerHTML = '<thead><tr><th style="width:60px;">Sitz</th><th>Name</th><th>Gruppe</th><th>Notiz</th></tr></thead>';
+    const tb = document.createElement('tbody');
+    for (let i = 0; i < t.seats; i++) {
+      const tr = document.createElement('tr');
+      const guestId = t.assignments[i];
+      const guest = guestId ? state.guests.find(g => g.id === guestId) : null;
+      tr.innerHTML = `<td>${i+1}</td>` +
+        `<td>${escapeHtml(guest ? guest.name : '—')}</td>` +
+        `<td>${escapeHtml(guest && guest.group ? guest.group : '')}</td>` +
+        `<td>${escapeHtml(guest && guest.notes ? guest.notes : '')}</td>`;
+      tb.appendChild(tr);
+    }
+    tbl.appendChild(tb);
+    page.appendChild(tbl);
+  }
+
+  // Unplaced section
+  const unplaced = state.guests.filter(g => !isPlaced(g.id) && g.rsvp !== 'declined');
+  if (unplaced.length) {
+    const h = document.createElement('h3');
+    h.textContent = `Nicht platziert (${unplaced.length})`;
+    h.style.marginTop = '20px';
+    page.appendChild(h);
+    const ul = document.createElement('ul');
+    for (const g of unplaced.sort((a,b) => a.name.localeCompare(b.name))) {
+      const li = document.createElement('li');
+      li.textContent = g.name + (g.group ? ' (' + g.group + ')' : '');
+      ul.appendChild(li);
+    }
+    page.appendChild(ul);
+  }
+
+  area.appendChild(page);
+  openPrintMode('Sitzliste');
+}
+
+function printPlaceCards() {
+  const area = document.getElementById('printArea');
+  area.innerHTML = '';
+  // For each placed guest find table+seat
+  const cards = [];
+  for (const t of state.tables) {
+    for (const [seatIdx, gid] of Object.entries(t.assignments)) {
+      const g = state.guests.find(x => x.id === gid);
+      if (g) cards.push({ guest: g, table: t, seat: parseInt(seatIdx) + 1 });
+    }
+  }
+  cards.sort((a,b) => a.guest.name.localeCompare(b.guest.name));
+
+  if (cards.length === 0) {
+    const page = document.createElement('div');
+    page.className = 'print-page';
+    page.innerHTML = '<h2>Tischkarten</h2><p>Es sind noch keine Gäste platziert.</p>';
+    area.appendChild(page);
+    openPrintMode('Tischkarten');
+    return;
+  }
+
+  // 8 cards per A4 page (2 cols x 4 rows)
+  const PER_PAGE = 8;
+  for (let p = 0; p < cards.length; p += PER_PAGE) {
+    const page = document.createElement('div');
+    page.className = 'print-page';
+    if (p === 0) {
+      const t = document.createElement('h2');
+      t.textContent = 'Tischkarten – ' + planTitle();
+      page.appendChild(t);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'place-card-grid';
+    for (const c of cards.slice(p, p + PER_PAGE)) {
+      const card = document.createElement('div');
+      card.className = 'place-card';
+      if (c.guest.group) {
+        card.style.borderTopColor = groupColor(c.guest.group);
+      }
+      const name = document.createElement('div');
+      name.className = 'pc-name';
+      name.textContent = c.guest.name;
+      card.appendChild(name);
+      const tab = document.createElement('div');
+      tab.className = 'pc-table';
+      tab.textContent = `${c.table.name} · Sitz ${c.seat}`;
+      card.appendChild(tab);
+      if (c.guest.notes) {
+        const n = document.createElement('div');
+        n.className = 'pc-notes';
+        n.textContent = c.guest.notes;
+        card.appendChild(n);
+      }
+      grid.appendChild(card);
+    }
+    page.appendChild(grid);
+    area.appendChild(page);
+  }
+
+  openPrintMode('Tischkarten');
+}
+
+// PNG export via lazy-loaded html2canvas
+function exportPng() {
+  const trigger = () => {
+    const bb = planBoundingBox();
+    const sourceCanvas = document.getElementById('canvas');
+    const oldTransform = sourceCanvas.style.transform;
+    sourceCanvas.style.transform = 'scale(1)';
+    const sizer = document.getElementById('canvas-sizer');
+    const oldW = sizer.style.width, oldH = sizer.style.height;
+    sizer.style.width = BASE_SIZE + 'px';
+    sizer.style.height = BASE_SIZE + 'px';
+    window.html2canvas(sourceCanvas, {
+      backgroundColor: '#ffffff',
+      x: bb.x,
+      y: bb.y,
+      width: bb.w,
+      height: bb.h,
+      scale: 2,
+      useCORS: true,
+    }).then(c => {
+      sourceCanvas.style.transform = oldTransform;
+      sizer.style.width = oldW;
+      sizer.style.height = oldH;
+      const a = document.createElement('a');
+      a.download = planFileName(planTitle()) + '.png';
+      a.href = c.toDataURL('image/png');
+      a.click();
+    }).catch(err => {
+      sourceCanvas.style.transform = oldTransform;
+      sizer.style.width = oldW;
+      sizer.style.height = oldH;
+      alert('PNG-Export fehlgeschlagen: ' + err.message);
+    });
+  };
+  if (window.html2canvas) trigger();
+  else {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = trigger;
+    s.onerror = () => alert('html2canvas konnte nicht geladen werden (Internet?).');
+    document.head.appendChild(s);
+  }
+}
+
+// Esc closes print mode
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && document.body.classList.contains('print-mode')) {
+    closePrint();
   }
 });
 
