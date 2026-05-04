@@ -123,6 +123,29 @@
   .table-el.selected .table-shape {
     box-shadow: 0 0 0 3px #0366d6;
   }
+  .table-el.highlight .table-shape {
+    box-shadow: 0 0 0 4px #f1c40f, 0 0 30px rgba(241,196,15,0.6);
+    animation: pulse 1s ease-out 2;
+  }
+  .seat.highlight {
+    box-shadow: 0 0 0 4px #f1c40f, 0 0 20px rgba(241,196,15,0.6);
+    animation: pulse 1s ease-out 2;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+  .search-result {
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    border: 1px solid transparent;
+  }
+  .search-result:hover { background: #f0f4f9; border-color: #d1d9e6; }
+  .search-result .meta { font-size: 11px; color: #586069; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
   .table-shape {
     background: #c8a165;
     border: 2px solid #8b6f43;
@@ -343,6 +366,7 @@
       <button class="secondary" onclick="changeSeats(1)" title="Sitz hinzufügen">+</button>
     </div>
     <div class="row" style="margin-top:8px;">
+      <button class="secondary" onclick="duplicateSelectedTable()">Duplizieren</button>
       <button class="danger" onclick="deleteSelectedTable()">Tisch löschen</button>
     </div>
   </div>
@@ -357,6 +381,12 @@
       <button onclick="loadGuests()">Liste übernehmen</button>
       <button class="secondary" onclick="autoAssign()">Auto-Zuweisung</button>
     </div>
+  </div>
+
+  <div class="panel">
+    <h3>Suchen im Plan</h3>
+    <input type="text" id="planSearch" placeholder="Name oder Tisch suchen…" oninput="renderSearchResults()" autocomplete="off">
+    <div id="searchResults" style="margin-top:6px;"></div>
   </div>
 
   <div class="stats">
@@ -382,7 +412,11 @@
 
 <div id="canvas-wrap">
   <div id="toolbar">
-    <span style="font-size:12px; color:#586069; align-self:center;">Tipp: Tisch klicken zum Auswählen, ziehen zum Verschieben. Sitz klicken um Gast zuzuweisen.</span>
+    <button class="zoom-btn" id="undoBtn" onclick="undo()" title="Rückgängig (Cmd/Ctrl+Z)" style="width:auto; padding:0 8px;">↶ Undo</button>
+    <button class="zoom-btn" id="redoBtn" onclick="redo()" title="Wiederherstellen (Cmd/Ctrl+Shift+Z)" style="width:auto; padding:0 8px;">↷ Redo</button>
+    <label style="display:flex; align-items:center; gap:4px; font-size:12px; color:#586069; margin-left:8px; padding-left:8px; border-left:1px solid #e1e4e8;">
+      <input type="checkbox" id="snapToggle" onchange="toggleSnap()"> Raster
+    </label>
     <div id="zoomControls">
       <button class="zoom-btn" onclick="zoomBy(-0.1)" title="Verkleinern">−</button>
       <span id="zoomLevel">100%</span>
@@ -463,8 +497,67 @@ function zoomReset() {
   applyZoom();
 }
 
+// --- History (undo/redo) ---
+const HISTORY_LIMIT = 50;
+let history = [];
+let historyIndex = -1;
+let suppressHistory = false;
+
+function pushHistory() {
+  if (suppressHistory) return;
+  // drop redo branch
+  history = history.slice(0, historyIndex + 1);
+  history.push(JSON.stringify(state));
+  if (history.length > HISTORY_LIMIT) history.shift();
+  historyIndex = history.length - 1;
+  updateUndoButtons();
+}
+
+function undo() {
+  if (historyIndex <= 0) return;
+  historyIndex--;
+  state = JSON.parse(history[historyIndex]);
+  suppressHistory = true;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  suppressHistory = false;
+  refreshSelectedPanel();
+  render();
+  updateUndoButtons();
+}
+
+function redo() {
+  if (historyIndex >= history.length - 1) return;
+  historyIndex++;
+  state = JSON.parse(history[historyIndex]);
+  suppressHistory = true;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  suppressHistory = false;
+  refreshSelectedPanel();
+  render();
+  updateUndoButtons();
+}
+
+function updateUndoButtons() {
+  document.getElementById('undoBtn').disabled = historyIndex <= 0;
+  document.getElementById('redoBtn').disabled = historyIndex >= history.length - 1;
+}
+
+function refreshSelectedPanel() {
+  if (!selectedTableId) return;
+  const t = state.tables.find(t => t.id === selectedTableId);
+  if (!t) {
+    selectedTableId = null;
+    document.getElementById('selectedTablePanel').style.display = 'none';
+    return;
+  }
+  document.getElementById('tableName').value = t.name;
+  document.getElementById('tableShape').value = t.shape;
+  document.getElementById('tableSeats').value = t.seats;
+}
+
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  pushHistory();
 }
 
 function load() {
@@ -472,6 +565,20 @@ function load() {
   if (s) {
     try { state = JSON.parse(s); } catch(e) {}
   }
+}
+
+// --- Snap-to-grid ---
+const SNAP_KEY = 'seatplanner-snap';
+const GRID_SIZE = 20;
+let snapEnabled = localStorage.getItem(SNAP_KEY) === '1';
+
+function toggleSnap() {
+  snapEnabled = document.getElementById('snapToggle').checked;
+  localStorage.setItem(SNAP_KEY, snapEnabled ? '1' : '0');
+}
+
+function snap(v) {
+  return snapEnabled ? Math.round(v / GRID_SIZE) * GRID_SIZE : v;
 }
 
 function groupColor(group) {
@@ -504,6 +611,24 @@ function deleteSelectedTable() {
   state.tables = state.tables.filter(t => t.id !== selectedTableId);
   selectedTableId = null;
   document.getElementById('selectedTablePanel').style.display = 'none';
+  save();
+  render();
+}
+
+function duplicateSelectedTable() {
+  const src = state.tables.find(t => t.id === selectedTableId);
+  if (!src) return;
+  const copy = {
+    id: state.nextTableId++,
+    name: src.name + ' (Kopie)',
+    shape: src.shape,
+    seats: src.seats,
+    x: snap(src.x + 60),
+    y: snap(src.y + 60),
+    assignments: {},
+  };
+  state.tables.push(copy);
+  selectTable(copy.id);
   save();
   render();
 }
@@ -679,6 +804,81 @@ function autoAssign() {
   render();
 }
 
+// --- Plan search ---
+function renderSearchResults() {
+  const q = document.getElementById('planSearch').value.trim().toLowerCase();
+  const out = document.getElementById('searchResults');
+  out.innerHTML = '';
+  if (!q) return;
+  const results = [];
+  // matching guests (with table info)
+  for (const g of state.guests) {
+    if (g.name.toLowerCase().includes(q) || (g.group && g.group.toLowerCase().includes(q))) {
+      let placement = null;
+      for (const t of state.tables) {
+        for (const [seatIdx, gid] of Object.entries(t.assignments)) {
+          if (gid === g.id) { placement = { table: t, seatIdx: parseInt(seatIdx) }; break; }
+        }
+        if (placement) break;
+      }
+      results.push({ kind: 'guest', guest: g, placement });
+    }
+  }
+  // matching tables
+  for (const t of state.tables) {
+    if (t.name.toLowerCase().includes(q)) results.push({ kind: 'table', table: t });
+  }
+  if (results.length === 0) {
+    out.innerHTML = '<div class="search-result"><span class="meta">Keine Treffer</span></div>';
+    return;
+  }
+  for (const r of results.slice(0, 20)) {
+    const el = document.createElement('div');
+    el.className = 'search-result';
+    if (r.kind === 'guest') {
+      const where = r.placement
+        ? `${r.placement.table.name} · Sitz ${r.placement.seatIdx + 1}`
+        : 'nicht platziert';
+      el.innerHTML = `<div>${escapeHtml(r.guest.name)}</div><div class="meta">${escapeHtml(where)}</div>`;
+      if (r.placement) {
+        el.addEventListener('click', () => focusOnTable(r.placement.table.id, r.placement.seatIdx));
+      }
+    } else {
+      el.innerHTML = `<div>${escapeHtml(r.table.name)}</div><div class="meta">Tisch (${r.table.seats} Sitze)</div>`;
+      el.addEventListener('click', () => focusOnTable(r.table.id));
+    }
+    out.appendChild(el);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function focusOnTable(tableId, seatIdx) {
+  const t = state.tables.find(t => t.id === tableId);
+  if (!t) return;
+  selectTable(tableId);
+  // scroll wrap so table is centered
+  const wrap = document.getElementById('canvas-wrap');
+  const wrapRect = wrap.getBoundingClientRect();
+  const tableEl = document.querySelector(`.table-el[data-id="${tableId}"]`);
+  if (tableEl) {
+    const sz = tableEl.offsetWidth;
+    wrap.scrollLeft = (t.x + sz / 2) * zoom - wrapRect.width / 2;
+    wrap.scrollTop = (t.y + sz / 2) * zoom - wrapRect.height / 2;
+    tableEl.classList.add('highlight');
+    setTimeout(() => tableEl.classList.remove('highlight'), 2200);
+    if (seatIdx !== undefined) {
+      const seat = tableEl.querySelectorAll('.seat')[seatIdx];
+      if (seat) {
+        seat.classList.add('highlight');
+        setTimeout(() => seat.classList.remove('highlight'), 2200);
+      }
+    }
+  }
+}
+
 function resetAll() {
   state = { tables: [], guests: [], nextTableId: 1, nextGuestId: 1 };
   selectedTableId = null;
@@ -736,6 +936,7 @@ function renderCanvas() {
   for (const t of state.tables) {
     const el = document.createElement('div');
     el.className = 'table-el' + (selectedTableId === t.id ? ' selected' : '');
+    el.dataset.id = t.id;
     el.style.left = t.x + 'px';
     el.style.top = t.y + 'px';
 
@@ -980,8 +1181,15 @@ function makeDraggable(el, table) {
     function onUp() {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      if (moved) save();
-      else selectTable(table.id);
+      if (moved) {
+        table.x = snap(table.x);
+        table.y = snap(table.y);
+        el.style.left = table.x + 'px';
+        el.style.top = table.y + 'px';
+        save();
+      } else {
+        selectTable(table.id);
+      }
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -1106,9 +1314,21 @@ document.getElementById('canvas-wrap').addEventListener('wheel', (ev) => {
   zoomBy(delta, ev.clientX, ev.clientY);
 }, { passive: false });
 
-// Keyboard shortcuts: +/-/0
+// Keyboard shortcuts
 document.addEventListener('keydown', (ev) => {
-  if (ev.target.matches('input, textarea, select')) return;
+  // Undo/redo even when focused on inputs is OK in most apps but to be safe skip in inputs/textareas
+  const inField = ev.target.matches('input, textarea, select');
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'z' || ev.key === 'Z')) {
+    if (inField) return;
+    ev.preventDefault();
+    if (ev.shiftKey) redo(); else undo();
+    return;
+  }
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'y' || ev.key === 'Y')) {
+    if (inField) return;
+    ev.preventDefault(); redo(); return;
+  }
+  if (inField) return;
   if ((ev.ctrlKey || ev.metaKey) && (ev.key === '+' || ev.key === '=')) {
     ev.preventDefault(); zoomBy(0.15);
   } else if ((ev.ctrlKey || ev.metaKey) && ev.key === '-') {
@@ -1119,8 +1339,13 @@ document.addEventListener('keydown', (ev) => {
 });
 
 load();
+// Initialize history with loaded state
+history = [JSON.stringify(state)];
+historyIndex = 0;
+document.getElementById('snapToggle').checked = snapEnabled;
 applyZoom();
 render();
+updateUndoButtons();
 </script>
 </body>
 </html>
