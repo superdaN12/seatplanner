@@ -21,9 +21,128 @@
     border-right: 1px solid #e1e4e8;
     display: flex;
     flex-direction: column;
+    padding: 0;
+    position: relative;
+  }
+  #sidebarScroll {
+    flex: 1;
     overflow-y: auto;
-    padding: 16px;
-    gap: 16px;
+    padding: 14px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+  }
+  #sidebarFooter {
+    border-top: 1px solid #e1e4e8;
+    padding: 10px 14px;
+    background: #fff;
+    flex-shrink: 0;
+  }
+  #topbar {
+    padding: 14px 14px 0;
+    border-bottom: 1px solid transparent;
+    background: #fff;
+  }
+  #topbar h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    color: #24292e;
+  }
+  #topbar .row { gap: 4px; }
+  .icon-btn {
+    background: #f6f8fa;
+    color: #24292e;
+    border: 1px solid #d1d5da;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: #e1e4e8; }
+
+  /* Dropdown menu */
+  .menu-wrap { position: relative; }
+  .menu-pop {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: white;
+    border: 1px solid #d1d5da;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    min-width: 220px;
+    z-index: 200;
+    padding: 4px;
+    display: none;
+  }
+  .menu-pop.open { display: block; }
+  .menu-pop button {
+    display: block;
+    width: 100%;
+    background: transparent;
+    color: #24292e;
+    text-align: left;
+    border: none;
+    padding: 7px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .menu-pop button:hover { background: #f0f4f9; }
+  .menu-pop button.danger { color: #d73a49; }
+  .menu-pop button.danger:hover { background: #fdebec; }
+  .menu-pop hr { border: none; border-top: 1px solid #e1e4e8; margin: 4px 0; }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid #e1e4e8;
+    margin-bottom: 10px;
+  }
+  .tab {
+    flex: 1;
+    background: transparent;
+    color: #586069;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px;
+    border-radius: 0;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .tab:hover { background: #f6f8fa; color: #24292e; }
+  .tab.active {
+    color: #0366d6;
+    border-bottom-color: #0366d6;
+  }
+
+  /* Selection panel emphasis */
+  .panel.selection {
+    border: 1px solid #0366d6;
+    background: #f1f8ff;
+  }
+  .panel.selection h3 { color: #0366d6; }
+
+  details > summary {
+    list-style: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 6px;
+    transition: transform 0.15s;
+    font-size: 10px;
+    color: #586069;
+  }
+  details[open] > summary::before { transform: rotate(90deg); }
+  details.tools > summary {
+    font-weight: 600;
+    font-size: 13px;
+    color: #24292e;
   }
   #canvas-wrap {
     flex: 1;
@@ -384,14 +503,11 @@
   .stats {
     display: flex;
     justify-content: space-around;
-    padding: 8px;
-    background: #fafbfc;
-    border-radius: 4px;
-    border: 1px solid #e1e4e8;
+    gap: 4px;
   }
-  .stat { text-align: center; }
-  .stat-value { font-size: 20px; font-weight: 600; color: #0366d6; }
-  .stat-label { font-size: 11px; color: #586069; }
+  .stat { text-align: center; flex: 1; }
+  .stat-value { font-size: 18px; font-weight: 600; color: #0366d6; line-height: 1.1; }
+  .stat-label { font-size: 10px; color: #586069; text-transform: uppercase; letter-spacing: 0.3px; }
   #toolbar {
     position: fixed;
     top: 12px;
@@ -596,191 +712,194 @@
 <body>
 
 <div id="sidebar">
-  <div>
+  <div id="topbar">
     <h2>Tischplaner</h2>
     <div class="row">
-      <button onclick="exportData()" title="Aktuellen Plan exportieren">Export</button>
-      <button class="secondary" onclick="exportAllPlans()" title="Alle Pläne exportieren">Alle</button>
-      <button class="secondary" onclick="document.getElementById('importFile').click()">Import</button>
-      <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
-      <button class="danger" onclick="if(confirm('Diesen Plan zurücksetzen?')) resetAll()">Reset</button>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h3>Plan</h3>
-    <div class="row">
       <select id="planSelector" onchange="switchPlan(this.value)" style="flex:1; min-width:0;"></select>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <button onclick="newPlan()" title="Neuer Plan">+ Neu</button>
-      <button class="secondary" onclick="renamePlan()" title="Umbenennen">Umbenennen</button>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <button class="secondary" onclick="duplicatePlan()">Duplizieren</button>
-      <button class="danger" onclick="deletePlan()">Löschen</button>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h3>Tisch hinzufügen</h3>
-    <div class="row">
-      <label>Form:</label>
-      <select id="newShape">
-        <option value="round">Rund</option>
-        <option value="square">Quadrat</option>
-        <option value="rectangle">Rechteck (Tafel)</option>
-      </select>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Sitze:</label>
-      <input type="number" id="newSeats" value="8" min="1" max="20">
-      <button onclick="addTable()">+ Tisch</button>
+      <button class="icon-btn" onclick="newPlan()" title="Neuer Plan">+</button>
+      <div class="menu-wrap">
+        <button class="icon-btn" onclick="toggleMenu('planMenu', event)" title="Mehr">⋯</button>
+        <div id="planMenu" class="menu-pop">
+          <button onclick="closeMenu('planMenu'); renamePlan()">Plan umbenennen</button>
+          <button onclick="closeMenu('planMenu'); duplicatePlan()">Plan duplizieren</button>
+          <button class="danger" onclick="closeMenu('planMenu'); deletePlan()">Plan löschen</button>
+          <hr>
+          <button onclick="closeMenu('planMenu'); exportData()">Aktuellen Plan exportieren</button>
+          <button onclick="closeMenu('planMenu'); exportAllPlans()">Alle Pläne exportieren</button>
+          <button onclick="closeMenu('planMenu'); document.getElementById('importFile').click()">JSON importieren…</button>
+          <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
+          <hr>
+          <button class="danger" onclick="closeMenu('planMenu'); if(confirm('Aktuellen Plan zurücksetzen?')) resetAll()">Plan zurücksetzen</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="panel">
-    <h3>Raumelement hinzufügen</h3>
-    <div class="row" style="flex-wrap:wrap;">
-      <button class="secondary" onclick="addElement('dance_floor')">Tanzfläche</button>
-      <button class="secondary" onclick="addElement('stage')">Bühne</button>
-      <button class="secondary" onclick="addElement('buffet')">Buffet</button>
-      <button class="secondary" onclick="addElement('bar')">Bar</button>
+  <div id="sidebarScroll">
+    <div class="panel" style="padding:10px 12px;">
+      <input type="text" id="planSearch" placeholder="🔍 Suchen (Name oder Tisch)…" oninput="renderSearchResults()" autocomplete="off">
+      <div id="searchResults" style="margin-top:6px;"></div>
     </div>
-    <div class="row" style="flex-wrap:wrap; margin-top:6px;">
-      <button class="secondary" onclick="addElement('door')">Tür</button>
-      <button class="secondary" onclick="addElement('wall')">Wand</button>
-      <button class="secondary" onclick="addElement('text')">Text</button>
-    </div>
-  </div>
 
-  <div class="panel" id="selectedElementPanel" style="display:none;">
-    <h3>Ausgewähltes Element</h3>
-    <div class="row">
-      <label>Beschriftung:</label>
-      <input type="text" id="elLabel" oninput="updateSelectedElement()">
+    <div class="panel selection" id="selectedTablePanel" style="display:none;">
+      <h3>Ausgewählter Tisch</h3>
+      <div class="row">
+        <label>Name:</label>
+        <input type="text" id="tableName" oninput="updateSelectedTable()">
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label>Form:</label>
+        <select id="tableShape" onchange="updateSelectedTable()">
+          <option value="round">Rund</option>
+          <option value="square">Quadrat</option>
+          <option value="rectangle">Rechteck (Tafel)</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label>Sitze:</label>
+        <button class="secondary" onclick="changeSeats(-1)" title="Sitz entfernen">−</button>
+        <input type="number" id="tableSeats" min="1" max="30" oninput="updateSelectedTable()">
+        <button class="secondary" onclick="changeSeats(1)" title="Sitz hinzufügen">+</button>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label>Drehung:</label>
+        <input type="range" id="tableRotation" min="0" max="360" step="5" value="0" oninput="updateSelectedTableRotation()" style="flex:1;">
+        <span id="tableRotationVal" style="font-size:12px; min-width:36px; text-align:right;">0°</span>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="secondary" onclick="duplicateSelectedTable()">Duplizieren</button>
+        <button class="danger" onclick="deleteSelectedTable()">Tisch löschen</button>
+      </div>
     </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Breite:</label>
-      <input type="number" id="elWidth" min="20" max="2000" oninput="updateSelectedElement()">
-      <label>Höhe:</label>
-      <input type="number" id="elHeight" min="20" max="2000" oninput="updateSelectedElement()">
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Drehung:</label>
-      <input type="range" id="elRotation" min="0" max="360" step="5" value="0" oninput="updateSelectedElement()" style="flex:1;">
-      <span id="elRotationVal" style="font-size:12px; min-width:36px; text-align:right;">0°</span>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <button class="secondary" onclick="duplicateSelectedElement()">Duplizieren</button>
-      <button class="danger" onclick="deleteSelectedElement()">Löschen</button>
-    </div>
-  </div>
 
-  <div class="panel">
-    <h3>Drucken / Export</h3>
-    <div class="row" style="flex-wrap:wrap;">
-      <button onclick="printPlan()">Plan drucken</button>
-      <button class="secondary" onclick="exportPng()">PNG</button>
+    <div class="panel selection" id="selectedElementPanel" style="display:none;">
+      <h3>Ausgewähltes Element</h3>
+      <div class="row">
+        <label>Beschriftung:</label>
+        <input type="text" id="elLabel" oninput="updateSelectedElement()">
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label>Breite:</label>
+        <input type="number" id="elWidth" min="20" max="2000" oninput="updateSelectedElement()">
+        <label>Höhe:</label>
+        <input type="number" id="elHeight" min="20" max="2000" oninput="updateSelectedElement()">
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <label>Drehung:</label>
+        <input type="range" id="elRotation" min="0" max="360" step="5" value="0" oninput="updateSelectedElement()" style="flex:1;">
+        <span id="elRotationVal" style="font-size:12px; min-width:36px; text-align:right;">0°</span>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="secondary" onclick="duplicateSelectedElement()">Duplizieren</button>
+        <button class="danger" onclick="deleteSelectedElement()">Löschen</button>
+      </div>
     </div>
-    <div class="row" style="margin-top:6px; flex-wrap:wrap;">
-      <button class="secondary" onclick="printSeatingList()">Sitzliste</button>
-      <button class="secondary" onclick="printPlaceCards()">Tischkarten</button>
-    </div>
-  </div>
 
-  <div class="panel" id="bgPanel">
-    <h3>Hintergrundbild</h3>
-    <div class="row">
-      <button class="secondary" onclick="document.getElementById('bgFile').click()">Bild laden</button>
-      <input type="file" id="bgFile" style="display:none" accept="image/*" onchange="loadBgImage(event)">
-      <button class="danger" id="bgRemoveBtn" onclick="removeBgImage()">Entfernen</button>
+    <div class="panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="table" onclick="setAddTab('table')">Tisch</button>
+        <button class="tab" data-tab="element" onclick="setAddTab('element')">Raumelement</button>
+      </div>
+      <div id="addTableTab">
+        <div class="row">
+          <label>Form:</label>
+          <select id="newShape">
+            <option value="round">Rund</option>
+            <option value="square">Quadrat</option>
+            <option value="rectangle">Rechteck (Tafel)</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <label>Sitze:</label>
+          <input type="number" id="newSeats" value="8" min="1" max="20">
+          <button onclick="addTable()">+ Tisch</button>
+        </div>
+      </div>
+      <div id="addElementTab" style="display:none;">
+        <div class="row" style="flex-wrap:wrap;">
+          <button class="secondary" onclick="addElement('dance_floor')">Tanzfläche</button>
+          <button class="secondary" onclick="addElement('stage')">Bühne</button>
+          <button class="secondary" onclick="addElement('buffet')">Buffet</button>
+          <button class="secondary" onclick="addElement('bar')">Bar</button>
+        </div>
+        <div class="row" style="flex-wrap:wrap; margin-top:6px;">
+          <button class="secondary" onclick="addElement('door')">Tür</button>
+          <button class="secondary" onclick="addElement('wall')">Wand</button>
+          <button class="secondary" onclick="addElement('text')">Text</button>
+        </div>
+      </div>
     </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Deckkraft:</label>
-      <input type="range" id="bgOpacity" min="0" max="100" step="5" value="50" oninput="updateBgOpacity()" style="flex:1;">
-      <span id="bgOpacityVal" style="font-size:12px; min-width:36px; text-align:right;">50%</span>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Skalierung:</label>
-      <input type="range" id="bgScale" min="20" max="300" step="5" value="100" oninput="updateBgScale()" style="flex:1;">
-      <span id="bgScaleVal" style="font-size:12px; min-width:42px; text-align:right;">100%</span>
-    </div>
-  </div>
 
-  <div class="panel" id="selectedTablePanel" style="display:none;">
-    <h3>Ausgewählter Tisch</h3>
-    <div class="row">
-      <label>Name:</label>
-      <input type="text" id="tableName" oninput="updateSelectedTable()">
+    <div class="panel">
+      <h3>Gäste</h3>
+      <p style="margin:0 0 4px; font-size:11px; color:#586069;">
+        Format: <code>Name</code> oder <code>Name | Gruppe</code> (eine pro Zeile)
+      </p>
+      <textarea id="guestInput" placeholder="Anna Müller | Familie&#10;Tom Schmidt | Familie&#10;Lisa Klein | Freunde"></textarea>
+      <div class="row" style="margin-top:6px;">
+        <button onclick="loadGuests()">Übernehmen</button>
+        <button class="secondary" onclick="document.getElementById('csvFile').click()" title="CSV mit Spalten Name,Gruppe,RSVP,Notiz">CSV</button>
+        <input type="file" id="csvFile" style="display:none" accept=".csv,text/csv" onchange="importGuestsCsv(event)">
+        <button class="secondary" onclick="autoAssign()">Auto-Sitzplan</button>
+      </div>
+      <p style="margin:6px 0 0; font-size:11px; color:#586069;">
+        Tipp: Doppelklick auf einen Gast öffnet die Bearbeitung (RSVP, Notizen, „Nicht zusammen mit").
+      </p>
     </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Form:</label>
-      <select id="tableShape" onchange="updateSelectedTable()">
-        <option value="round">Rund</option>
-        <option value="square">Quadrat</option>
-        <option value="rectangle">Rechteck (Tafel)</option>
-      </select>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Sitze:</label>
-      <button class="secondary" onclick="changeSeats(-1)" title="Sitz entfernen">−</button>
-      <input type="number" id="tableSeats" min="1" max="30" oninput="updateSelectedTable()">
-      <button class="secondary" onclick="changeSeats(1)" title="Sitz hinzufügen">+</button>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <label>Drehung:</label>
-      <input type="range" id="tableRotation" min="0" max="360" step="5" value="0" oninput="updateSelectedTableRotation()" style="flex:1;">
-      <span id="tableRotationVal" style="font-size:12px; min-width:36px; text-align:right;">0°</span>
-    </div>
-    <div class="row" style="margin-top:8px;">
-      <button class="secondary" onclick="duplicateSelectedTable()">Duplizieren</button>
-      <button class="danger" onclick="deleteSelectedTable()">Tisch löschen</button>
-    </div>
-  </div>
 
-  <div class="panel">
-    <h3>Gäste</h3>
-    <p style="margin:0 0 4px; font-size:11px; color:#586069;">
-      Format: <code>Name</code> oder <code>Name | Gruppe</code> (eine pro Zeile)
-    </p>
-    <textarea id="guestInput" placeholder="Anna Müller | Familie&#10;Tom Schmidt | Familie&#10;Lisa Klein | Freunde"></textarea>
-    <div class="row" style="margin-top:6px;">
-      <button onclick="loadGuests()">Liste übernehmen</button>
-      <button class="secondary" onclick="document.getElementById('csvFile').click()" title="CSV mit Spalten Name,Gruppe,RSVP,Notiz">CSV-Import</button>
-      <input type="file" id="csvFile" style="display:none" accept=".csv,text/csv" onchange="importGuestsCsv(event)">
-      <button class="secondary" onclick="autoAssign()">Auto-Zuweisung</button>
-    </div>
-    <p style="margin:6px 0 0; font-size:11px; color:#586069;">
-      Tipp: Doppelklick auf einen Gast in der Liste öffnet die Bearbeitung (RSVP, Notizen, „Nicht zusammen mit").
-    </p>
-  </div>
-
-  <div class="panel">
-    <h3>Suchen im Plan</h3>
-    <input type="text" id="planSearch" placeholder="Name oder Tisch suchen…" oninput="renderSearchResults()" autocomplete="off">
-    <div id="searchResults" style="margin-top:6px;"></div>
-  </div>
-
-  <div class="stats">
-    <div class="stat"><div class="stat-value" id="statPlaced">0</div><div class="stat-label">Platziert</div></div>
-    <div class="stat"><div class="stat-value" id="statUnplaced">0</div><div class="stat-label">Offen</div></div>
-    <div class="stat"><div class="stat-value" id="statSeats">0</div><div class="stat-label">Sitze</div></div>
-    <div class="stat" style="display:none;"><div class="stat-value" id="statDeclined" style="color:#d73a49;">0</div><div class="stat-label">Abgesagt</div></div>
-  </div>
-
-  <div class="panel">
     <details open>
-      <summary>Unplatzierte Gäste</summary>
-      <div id="unplacedList"></div>
+      <summary style="font-size:13px; font-weight:600; padding:4px 0;">Unplatzierte Gäste</summary>
+      <div id="unplacedList" style="margin-top:6px;"></div>
+    </details>
+
+    <details>
+      <summary style="font-size:13px; font-weight:600; padding:4px 0;">Platzierte Gäste</summary>
+      <div id="placedList" style="margin-top:6px;"></div>
+    </details>
+
+    <details class="tools" id="bgPanel">
+      <summary>Hintergrundbild</summary>
+      <div style="margin-top:8px;">
+        <div class="row">
+          <button class="secondary" onclick="document.getElementById('bgFile').click()">Bild laden</button>
+          <input type="file" id="bgFile" style="display:none" accept="image/*" onchange="loadBgImage(event)">
+          <button class="danger" id="bgRemoveBtn" onclick="removeBgImage()">Entfernen</button>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <label>Deckkraft:</label>
+          <input type="range" id="bgOpacity" min="0" max="100" step="5" value="50" oninput="updateBgOpacity()" style="flex:1;">
+          <span id="bgOpacityVal" style="font-size:12px; min-width:36px; text-align:right;">50%</span>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <label>Skalierung:</label>
+          <input type="range" id="bgScale" min="20" max="300" step="5" value="100" oninput="updateBgScale()" style="flex:1;">
+          <span id="bgScaleVal" style="font-size:12px; min-width:42px; text-align:right;">100%</span>
+        </div>
+      </div>
+    </details>
+
+    <details class="tools">
+      <summary>Drucken / Export</summary>
+      <div style="margin-top:8px;">
+        <div class="row" style="flex-wrap:wrap;">
+          <button onclick="printPlan()">Plan drucken</button>
+          <button class="secondary" onclick="exportPng()">PNG</button>
+        </div>
+        <div class="row" style="margin-top:6px; flex-wrap:wrap;">
+          <button class="secondary" onclick="printSeatingList()">Sitzliste</button>
+          <button class="secondary" onclick="printPlaceCards()">Tischkarten</button>
+        </div>
+      </div>
     </details>
   </div>
 
-  <div class="panel">
-    <details>
-      <summary>Platzierte Gäste</summary>
-      <div id="placedList"></div>
-    </details>
+  <div id="sidebarFooter">
+    <div class="stats">
+      <div class="stat"><div class="stat-value" id="statPlaced">0</div><div class="stat-label">Platziert</div></div>
+      <div class="stat"><div class="stat-value" id="statUnplaced">0</div><div class="stat-label">Offen</div></div>
+      <div class="stat"><div class="stat-value" id="statSeats">0</div><div class="stat-label">Sitze</div></div>
+      <div class="stat" style="display:none;"><div class="stat-value" id="statDeclined" style="color:#d73a49;">0</div><div class="stat-label">Abgesagt</div></div>
+    </div>
   </div>
 </div>
 
@@ -2870,6 +2989,61 @@ document.addEventListener('keydown', (ev) => {
     closePrint();
   }
 });
+
+// --- UI helpers (sidebar) ---
+function toggleMenu(id, ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById(id);
+  const isOpen = menu.classList.contains('open');
+  // close all other menus
+  document.querySelectorAll('.menu-pop.open').forEach(m => m.classList.remove('open'));
+  if (!isOpen) menu.classList.add('open');
+}
+
+function closeMenu(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest('.menu-pop') || ev.target.closest('.menu-wrap')) return;
+  document.querySelectorAll('.menu-pop.open').forEach(m => m.classList.remove('open'));
+});
+
+function setAddTab(which) {
+  document.querySelectorAll('.tabs .tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === which);
+  });
+  document.getElementById('addTableTab').style.display = which === 'table' ? '' : 'none';
+  document.getElementById('addElementTab').style.display = which === 'element' ? '' : 'none';
+}
+
+// Auto-switch tab when an element/table is selected
+const _origSelectTable = selectTable;
+selectTable = function(id) {
+  _origSelectTable(id);
+  setAddTab('table');
+  scrollSelectedIntoView();
+};
+const _origSelectElement = selectElement;
+selectElement = function(id) {
+  _origSelectElement(id);
+  setAddTab('element');
+  scrollSelectedIntoView();
+};
+
+function scrollSelectedIntoView() {
+  const tp = document.getElementById('selectedTablePanel');
+  const ep = document.getElementById('selectedElementPanel');
+  const visible = (tp && tp.style.display !== 'none') ? tp
+                : (ep && ep.style.display !== 'none') ? ep : null;
+  if (!visible) return;
+  setTimeout(() => {
+    const scroll = document.getElementById('sidebarScroll');
+    if (scroll && visible.offsetTop < scroll.scrollTop) {
+      scroll.scrollTop = Math.max(0, visible.offsetTop - 8);
+    }
+  }, 0);
+}
 
 load();
 // Initialize history with loaded state
