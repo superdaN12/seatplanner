@@ -159,6 +159,99 @@
     padding: 4px;
   }
   .table-shape.round { border-radius: 50%; }
+  .table-shape.rectangle { border-radius: 4px; }
+  .table-wrap { transform-origin: center center; }
+
+  /* Room elements */
+  .element-el {
+    position: absolute;
+    cursor: move;
+    user-select: none;
+    transform-origin: center center;
+  }
+  .element-el.selected .element-shape {
+    box-shadow: 0 0 0 3px #0366d6;
+  }
+  .element-shape {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(0,0,0,0.6);
+    box-sizing: border-box;
+    text-align: center;
+    padding: 4px;
+  }
+  .element-shape.dance_floor {
+    background: repeating-linear-gradient(45deg, #f5e6c8, #f5e6c8 12px, #ead9b0 12px, #ead9b0 24px);
+    border: 2px solid #c4a973;
+    border-radius: 6px;
+  }
+  .element-shape.stage {
+    background: #2c3e50;
+    color: white;
+    border-radius: 4px;
+  }
+  .element-shape.buffet {
+    background: #c89c5a;
+    border: 2px solid #8b6f43;
+    color: #3d2e15;
+    border-radius: 4px;
+  }
+  .element-shape.bar {
+    background: #6b4423;
+    color: white;
+    border-radius: 4px;
+  }
+  .element-shape.door {
+    background: transparent;
+    border-bottom: 3px solid #586069;
+    border-right: 3px solid #586069;
+    border-radius: 0 0 100% 0;
+    color: #586069;
+  }
+  .element-shape.wall {
+    background: #444c56;
+    color: white;
+    border-radius: 1px;
+  }
+  .element-shape.text {
+    background: rgba(255,255,255,0.85);
+    border: 1px dashed #b1b6bd;
+    color: #24292e;
+    border-radius: 4px;
+  }
+  .resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border: 2px solid #0366d6;
+    border-radius: 2px;
+    z-index: 5;
+  }
+  .resize-handle.br { right: -8px; bottom: -8px; cursor: nwse-resize; }
+  .rotate-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #0366d6;
+    border-radius: 50%;
+    top: -22px;
+    left: calc(50% - 6px);
+    cursor: grab;
+    z-index: 5;
+  }
+  #bgImage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    user-select: none;
+  }
   .seat {
     position: absolute;
     width: 36px;
@@ -454,13 +547,71 @@
       <label>Form:</label>
       <select id="newShape">
         <option value="round">Rund</option>
-        <option value="square">Eckig</option>
+        <option value="square">Quadrat</option>
+        <option value="rectangle">Rechteck (Tafel)</option>
       </select>
     </div>
     <div class="row" style="margin-top:6px;">
       <label>Sitze:</label>
       <input type="number" id="newSeats" value="8" min="1" max="20">
       <button onclick="addTable()">+ Tisch</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Raumelement hinzufügen</h3>
+    <div class="row" style="flex-wrap:wrap;">
+      <button class="secondary" onclick="addElement('dance_floor')">Tanzfläche</button>
+      <button class="secondary" onclick="addElement('stage')">Bühne</button>
+      <button class="secondary" onclick="addElement('buffet')">Buffet</button>
+      <button class="secondary" onclick="addElement('bar')">Bar</button>
+    </div>
+    <div class="row" style="flex-wrap:wrap; margin-top:6px;">
+      <button class="secondary" onclick="addElement('door')">Tür</button>
+      <button class="secondary" onclick="addElement('wall')">Wand</button>
+      <button class="secondary" onclick="addElement('text')">Text</button>
+    </div>
+  </div>
+
+  <div class="panel" id="selectedElementPanel" style="display:none;">
+    <h3>Ausgewähltes Element</h3>
+    <div class="row">
+      <label>Beschriftung:</label>
+      <input type="text" id="elLabel" oninput="updateSelectedElement()">
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Breite:</label>
+      <input type="number" id="elWidth" min="20" max="2000" oninput="updateSelectedElement()">
+      <label>Höhe:</label>
+      <input type="number" id="elHeight" min="20" max="2000" oninput="updateSelectedElement()">
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Drehung:</label>
+      <input type="range" id="elRotation" min="0" max="360" step="5" value="0" oninput="updateSelectedElement()" style="flex:1;">
+      <span id="elRotationVal" style="font-size:12px; min-width:36px; text-align:right;">0°</span>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button class="secondary" onclick="duplicateSelectedElement()">Duplizieren</button>
+      <button class="danger" onclick="deleteSelectedElement()">Löschen</button>
+    </div>
+  </div>
+
+  <div class="panel" id="bgPanel">
+    <h3>Hintergrundbild</h3>
+    <div class="row">
+      <button class="secondary" onclick="document.getElementById('bgFile').click()">Bild laden</button>
+      <input type="file" id="bgFile" style="display:none" accept="image/*" onchange="loadBgImage(event)">
+      <button class="danger" id="bgRemoveBtn" onclick="removeBgImage()">Entfernen</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Deckkraft:</label>
+      <input type="range" id="bgOpacity" min="0" max="100" step="5" value="50" oninput="updateBgOpacity()" style="flex:1;">
+      <span id="bgOpacityVal" style="font-size:12px; min-width:36px; text-align:right;">50%</span>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Skalierung:</label>
+      <input type="range" id="bgScale" min="20" max="300" step="5" value="100" oninput="updateBgScale()" style="flex:1;">
+      <span id="bgScaleVal" style="font-size:12px; min-width:42px; text-align:right;">100%</span>
     </div>
   </div>
 
@@ -474,7 +625,8 @@
       <label>Form:</label>
       <select id="tableShape" onchange="updateSelectedTable()">
         <option value="round">Rund</option>
-        <option value="square">Eckig</option>
+        <option value="square">Quadrat</option>
+        <option value="rectangle">Rechteck (Tafel)</option>
       </select>
     </div>
     <div class="row" style="margin-top:6px;">
@@ -482,6 +634,11 @@
       <button class="secondary" onclick="changeSeats(-1)" title="Sitz entfernen">−</button>
       <input type="number" id="tableSeats" min="1" max="30" oninput="updateSelectedTable()">
       <button class="secondary" onclick="changeSeats(1)" title="Sitz hinzufügen">+</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Drehung:</label>
+      <input type="range" id="tableRotation" min="0" max="360" step="5" value="0" oninput="updateSelectedTableRotation()" style="flex:1;">
+      <span id="tableRotationVal" style="font-size:12px; min-width:36px; text-align:right;">0°</span>
     </div>
     <div class="row" style="margin-top:8px;">
       <button class="secondary" onclick="duplicateSelectedTable()">Duplizieren</button>
@@ -615,8 +772,22 @@ const STORAGE_KEY = 'seatplanner-v2';
 const GROUP_COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
 
 function freshPlanState() {
-  return { tables: [], guests: [], nextTableId: 1, nextGuestId: 1 };
+  return { tables: [], guests: [], elements: [], background: null, nextTableId: 1, nextGuestId: 1, nextElementId: 1 };
 }
+
+const ELEMENT_DEFAULTS = {
+  dance_floor: { w: 240, h: 240, label: 'Tanzfläche' },
+  stage:       { w: 220, h: 90,  label: 'Bühne' },
+  buffet:      { w: 240, h: 70,  label: 'Buffet' },
+  bar:         { w: 160, h: 70,  label: 'Bar' },
+  door:        { w: 60,  h: 60,  label: '' },
+  wall:        { w: 200, h: 12,  label: '' },
+  text:        { w: 140, h: 40,  label: 'Beschriftung' },
+};
+const ELEMENT_LABELS = {
+  dance_floor: 'Tanzfläche', stage: 'Bühne', buffet: 'Buffet',
+  bar: 'Bar', door: 'Tür', wall: 'Wand', text: 'Text',
+};
 
 function normalizeGuest(g) {
   if (g.rsvp === undefined) g.rsvp = 'pending';
@@ -627,6 +798,10 @@ function normalizeGuest(g) {
 
 function normalizeState(s) {
   if (Array.isArray(s.guests)) s.guests.forEach(normalizeGuest);
+  if (!Array.isArray(s.elements)) s.elements = [];
+  if (!s.nextElementId) s.nextElementId = (s.elements.reduce((m, e) => Math.max(m, e.id || 0), 0) + 1) || 1;
+  if (Array.isArray(s.tables)) s.tables.forEach(t => { if (t.rotation === undefined) t.rotation = 0; });
+  if (s.background === undefined) s.background = null;
   return s;
 }
 
@@ -701,6 +876,7 @@ function undo() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   suppressHistory = false;
   refreshSelectedPanel();
+  refreshElementPanel();
   render();
   updateUndoButtons();
 }
@@ -713,6 +889,7 @@ function redo() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   suppressHistory = false;
   refreshSelectedPanel();
+  refreshElementPanel();
   render();
   updateUndoButtons();
 }
@@ -733,6 +910,9 @@ function refreshSelectedPanel() {
   document.getElementById('tableName').value = t.name;
   document.getElementById('tableShape').value = t.shape;
   document.getElementById('tableSeats').value = t.seats;
+  const rot = t.rotation || 0;
+  document.getElementById('tableRotation').value = rot;
+  document.getElementById('tableRotationVal').textContent = rot + '°';
 }
 
 function save() {
@@ -793,8 +973,11 @@ function switchPlan(id) {
   planStore.plans[planStore.activePlanId] = state;
   planStore.activePlanId = id;
   state = planStore.plans[id];
+  normalizeState(state);
   selectedTableId = null;
+  selectedElementId = null;
   document.getElementById('selectedTablePanel').style.display = 'none';
+  document.getElementById('selectedElementPanel').style.display = 'none';
   document.getElementById('guestInput').value = '';
   document.getElementById('planSearch').value = '';
   document.getElementById('searchResults').innerHTML = '';
@@ -904,9 +1087,10 @@ function addTable() {
     name: 'Tisch ' + state.nextTableId,
     shape,
     seats,
+    rotation: 0,
     x: 200 + Math.random() * 300,
     y: 200 + Math.random() * 300,
-    assignments: {}, // seatIndex -> guestId
+    assignments: {},
   };
   state.tables.push(t);
   save();
@@ -931,6 +1115,7 @@ function duplicateSelectedTable() {
     name: src.name + ' (Kopie)',
     shape: src.shape,
     seats: src.seats,
+    rotation: src.rotation || 0,
     x: snap(src.x + 60),
     y: snap(src.y + 60),
     assignments: {},
@@ -941,14 +1126,291 @@ function duplicateSelectedTable() {
   render();
 }
 
+// --- Room elements ---
+let selectedElementId = null;
+
+function addElement(type) {
+  const def = ELEMENT_DEFAULTS[type] || { w: 100, h: 100, label: '' };
+  const e = {
+    id: state.nextElementId++,
+    type,
+    x: 300 + Math.random() * 200,
+    y: 300 + Math.random() * 200,
+    w: def.w,
+    h: def.h,
+    rotation: 0,
+    label: def.label,
+  };
+  if (!state.elements) state.elements = [];
+  state.elements.push(e);
+  selectElement(e.id);
+  save();
+  render();
+}
+
+function selectElement(id) {
+  selectedElementId = id;
+  selectedTableId = null;
+  document.getElementById('selectedTablePanel').style.display = 'none';
+  const e = state.elements.find(x => x.id === id);
+  if (!e) return;
+  document.getElementById('selectedElementPanel').style.display = 'block';
+  document.getElementById('elLabel').value = e.label || '';
+  document.getElementById('elWidth').value = e.w;
+  document.getElementById('elHeight').value = e.h;
+  const rot = e.rotation || 0;
+  document.getElementById('elRotation').value = rot;
+  document.getElementById('elRotationVal').textContent = rot + '°';
+  render();
+}
+
+function updateSelectedElement() {
+  const e = state.elements.find(x => x.id === selectedElementId);
+  if (!e) return;
+  e.label = document.getElementById('elLabel').value;
+  e.w = Math.max(20, parseInt(document.getElementById('elWidth').value) || e.w);
+  e.h = Math.max(20, parseInt(document.getElementById('elHeight').value) || e.h);
+  const rot = parseInt(document.getElementById('elRotation').value) || 0;
+  e.rotation = rot;
+  document.getElementById('elRotationVal').textContent = rot + '°';
+  // light update without history thrash on slider
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+  render();
+}
+
+function deleteSelectedElement() {
+  const e = state.elements.find(x => x.id === selectedElementId);
+  if (!e) return;
+  if (!confirm('Element löschen?')) return;
+  state.elements = state.elements.filter(x => x.id !== selectedElementId);
+  selectedElementId = null;
+  document.getElementById('selectedElementPanel').style.display = 'none';
+  save();
+  render();
+}
+
+function duplicateSelectedElement() {
+  const src = state.elements.find(x => x.id === selectedElementId);
+  if (!src) return;
+  const copy = { ...src, id: state.nextElementId++, x: snap(src.x + 30), y: snap(src.y + 30) };
+  state.elements.push(copy);
+  selectElement(copy.id);
+  save();
+  render();
+}
+
+// --- Background image ---
+function loadBgImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) {
+    if (!confirm('Bild ist größer als 4 MB. Das kann den Speicher überlasten. Trotzdem laden?')) {
+      event.target.value = '';
+      return;
+    }
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      state.background = {
+        src: e.target.result,
+        opacity: 0.5,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        baseWidth: img.naturalWidth,
+        baseHeight: img.naturalHeight,
+        scale: 100,
+      };
+      document.getElementById('bgOpacity').value = 50;
+      document.getElementById('bgOpacityVal').textContent = '50%';
+      document.getElementById('bgScale').value = 100;
+      document.getElementById('bgScaleVal').textContent = '100%';
+      save();
+      render();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function removeBgImage() {
+  if (!state.background) return;
+  if (!confirm('Hintergrundbild entfernen?')) return;
+  state.background = null;
+  save();
+  render();
+}
+
+function updateBgOpacity() {
+  if (!state.background) return;
+  const v = parseInt(document.getElementById('bgOpacity').value);
+  state.background.opacity = v / 100;
+  document.getElementById('bgOpacityVal').textContent = v + '%';
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+  const img = document.getElementById('bgImage');
+  if (img) img.style.opacity = state.background.opacity;
+}
+
+function updateBgScale() {
+  if (!state.background) return;
+  const v = parseInt(document.getElementById('bgScale').value);
+  state.background.scale = v;
+  const base = state.background.baseWidth || state.background.width;
+  const baseH = state.background.baseHeight || state.background.height;
+  state.background.width = Math.round(base * v / 100);
+  state.background.height = Math.round(baseH * v / 100);
+  document.getElementById('bgScaleVal').textContent = v + '%';
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+  const img = document.getElementById('bgImage');
+  if (img) {
+    img.style.width = state.background.width + 'px';
+    img.style.height = state.background.height + 'px';
+  }
+}
+
+function refreshBgPanel() {
+  const has = !!(state.background && state.background.src);
+  document.getElementById('bgRemoveBtn').style.display = has ? '' : 'none';
+  if (has) {
+    document.getElementById('bgOpacity').value = Math.round((state.background.opacity ?? 0.5) * 100);
+    document.getElementById('bgOpacityVal').textContent = Math.round((state.background.opacity ?? 0.5) * 100) + '%';
+    document.getElementById('bgScale').value = state.background.scale ?? 100;
+    document.getElementById('bgScaleVal').textContent = (state.background.scale ?? 100) + '%';
+  }
+}
+
+function refreshElementPanel() {
+  if (!selectedElementId) return;
+  const e = state.elements.find(x => x.id === selectedElementId);
+  if (!e) {
+    selectedElementId = null;
+    document.getElementById('selectedElementPanel').style.display = 'none';
+    return;
+  }
+  document.getElementById('elLabel').value = e.label || '';
+  document.getElementById('elWidth').value = e.w;
+  document.getElementById('elHeight').value = e.h;
+  const rot = e.rotation || 0;
+  document.getElementById('elRotation').value = rot;
+  document.getElementById('elRotationVal').textContent = rot + '°';
+}
+
+function renderElement(e) {
+  const el = document.createElement('div');
+  el.className = 'element-el' + (selectedElementId === e.id ? ' selected' : '');
+  el.dataset.elid = e.id;
+  el.style.left = e.x + 'px';
+  el.style.top = e.y + 'px';
+  el.style.width = e.w + 'px';
+  el.style.height = e.h + 'px';
+  if (e.rotation) el.style.transform = `rotate(${e.rotation}deg)`;
+
+  const shape = document.createElement('div');
+  shape.className = 'element-shape ' + e.type;
+  if (e.label) {
+    const lbl = document.createElement('div');
+    lbl.textContent = e.label;
+    if (e.rotation) lbl.style.transform = `rotate(${-e.rotation}deg)`;
+    shape.appendChild(lbl);
+  }
+  el.appendChild(shape);
+
+  // Drag handler
+  el.addEventListener('mousedown', (ev) => {
+    if (ev.target.classList.contains('resize-handle') || ev.target.classList.contains('rotate-handle')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const startX = ev.clientX, startY = ev.clientY;
+    const startLeft = e.x, startTop = e.y;
+    let moved = false;
+    function onMove(me) {
+      const dx = (me.clientX - startX) / zoom;
+      const dy = (me.clientY - startY) / zoom;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      e.x = Math.max(0, startLeft + dx);
+      e.y = Math.max(0, startTop + dy);
+      el.style.left = e.x + 'px';
+      el.style.top = e.y + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (moved) {
+        e.x = snap(e.x);
+        e.y = snap(e.y);
+        el.style.left = e.x + 'px';
+        el.style.top = e.y + 'px';
+        save();
+      } else {
+        selectElement(e.id);
+      }
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Resize handle (bottom-right)
+  if (selectedElementId === e.id) {
+    const rh = document.createElement('div');
+    rh.className = 'resize-handle br';
+    rh.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const startX = ev.clientX, startY = ev.clientY;
+      const startW = e.w, startH = e.h;
+      function onMove(me) {
+        const dx = (me.clientX - startX) / zoom;
+        const dy = (me.clientY - startY) / zoom;
+        e.w = Math.max(20, startW + dx);
+        e.h = Math.max(20, startH + dy);
+        el.style.width = e.w + 'px';
+        el.style.height = e.h + 'px';
+        document.getElementById('elWidth').value = Math.round(e.w);
+        document.getElementById('elHeight').value = Math.round(e.h);
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        e.w = Math.round(e.w);
+        e.h = Math.round(e.h);
+        save();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    el.appendChild(rh);
+  }
+
+  return el;
+}
+
 function selectTable(id) {
   selectedTableId = id;
+  selectedElementId = null;
+  document.getElementById('selectedElementPanel') &&
+    (document.getElementById('selectedElementPanel').style.display = 'none');
   const t = state.tables.find(t => t.id === id);
   if (!t) return;
   document.getElementById('selectedTablePanel').style.display = 'block';
   document.getElementById('tableName').value = t.name;
   document.getElementById('tableShape').value = t.shape;
   document.getElementById('tableSeats').value = t.seats;
+  const rot = t.rotation || 0;
+  document.getElementById('tableRotation').value = rot;
+  document.getElementById('tableRotationVal').textContent = rot + '°';
+  render();
+}
+
+function updateSelectedTableRotation() {
+  const t = state.tables.find(t => t.id === selectedTableId);
+  if (!t) return;
+  const v = parseInt(document.getElementById('tableRotation').value) || 0;
+  t.rotation = v;
+  document.getElementById('tableRotationVal').textContent = v + '°';
+  // light-touch update: avoid pushing a history step on every drag tick
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
   render();
 }
 
@@ -1381,6 +1843,7 @@ function render() {
   renderGuestLists();
   renderStats();
   renderGuestInput();
+  refreshBgPanel();
 }
 
 function renderGuestInput() {
@@ -1391,37 +1854,97 @@ function renderGuestInput() {
   }
 }
 
+function tableLayout(t) {
+  const SEAT = 36;
+  if (t.shape === 'rectangle') {
+    const top = Math.ceil(t.seats / 2);
+    const bot = Math.floor(t.seats / 2);
+    const longSide = Math.max(top, bot, 1);
+    const length = Math.max(160, 80 + longSide * 50);
+    const depth = 80;
+    const padX = 24;
+    const padY = 60; // room for seats above/below
+    const wrapW = length + padX * 2;
+    const wrapH = depth + padY * 2;
+    const shapeOffsetX = padX;
+    const shapeOffsetY = padY;
+    const seats = [];
+    for (let i = 0; i < top; i++) {
+      const x = shapeOffsetX + (length / (top + 1)) * (i + 1) - SEAT/2;
+      const y = shapeOffsetY - 12 - SEAT;
+      seats.push({ x, y });
+    }
+    for (let i = 0; i < bot; i++) {
+      const x = shapeOffsetX + (length / (bot + 1)) * (i + 1) - SEAT/2;
+      const y = shapeOffsetY + depth + 12;
+      seats.push({ x, y });
+    }
+    return { wrapW, wrapH, shapeOffsetX, shapeOffsetY, shapeW: length, shapeH: depth, seats };
+  }
+  // round / square: existing radial layout
+  const tableSize = Math.max(80, 60 + t.seats * 8);
+  const radius = tableSize / 2 + 30;
+  const totalSize = (radius + 22) * 2;
+  const seats = [];
+  for (let i = 0; i < t.seats; i++) {
+    const angle = (i / t.seats) * Math.PI * 2 - Math.PI / 2;
+    const x = totalSize/2 + Math.cos(angle) * radius - SEAT/2;
+    const y = totalSize/2 + Math.sin(angle) * radius - SEAT/2;
+    seats.push({ x, y });
+  }
+  return {
+    wrapW: totalSize, wrapH: totalSize,
+    shapeOffsetX: totalSize/2 - tableSize/2,
+    shapeOffsetY: totalSize/2 - tableSize/2,
+    shapeW: tableSize, shapeH: tableSize,
+    seats,
+  };
+}
+
 function renderCanvas() {
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
+  // Background image
+  if (state.background && state.background.src) {
+    const img = document.createElement('img');
+    img.id = 'bgImage';
+    img.src = state.background.src;
+    img.style.opacity = (state.background.opacity ?? 0.5);
+    if (state.background.width)  img.style.width = state.background.width + 'px';
+    if (state.background.height) img.style.height = state.background.height + 'px';
+    canvas.appendChild(img);
+  }
+  // Room elements (under tables)
+  for (const e of (state.elements || [])) {
+    canvas.appendChild(renderElement(e));
+  }
   for (const t of state.tables) {
+    const layout = tableLayout(t);
     const el = document.createElement('div');
     el.className = 'table-el' + (selectedTableId === t.id ? ' selected' : '');
     el.dataset.id = t.id;
     el.style.left = t.x + 'px';
     el.style.top = t.y + 'px';
 
-    // size depends on seats
-    const tableSize = Math.max(80, 60 + t.seats * 8);
-    const radius = tableSize / 2 + 30;
-    const totalSize = (radius + 22) * 2;
-
     const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
     wrap.style.position = 'relative';
-    wrap.style.width = totalSize + 'px';
-    wrap.style.height = totalSize + 'px';
+    wrap.style.width = layout.wrapW + 'px';
+    wrap.style.height = layout.wrapH + 'px';
+    if (t.rotation) wrap.style.transform = `rotate(${t.rotation}deg)`;
 
     const shape = document.createElement('div');
     shape.className = 'table-shape ' + t.shape;
-    shape.style.width = tableSize + 'px';
-    shape.style.height = tableSize + 'px';
+    shape.style.width = layout.shapeW + 'px';
+    shape.style.height = layout.shapeH + 'px';
     shape.style.position = 'absolute';
-    shape.style.left = (totalSize/2 - tableSize/2) + 'px';
-    shape.style.top = (totalSize/2 - tableSize/2) + 'px';
+    shape.style.left = layout.shapeOffsetX + 'px';
+    shape.style.top = layout.shapeOffsetY + 'px';
     shape.style.flexDirection = 'column';
 
     const nameEl = document.createElement('div');
     nameEl.textContent = t.name;
+    if (t.rotation) nameEl.style.transform = `rotate(${-t.rotation}deg)`;
     shape.appendChild(nameEl);
 
     const occupied = Object.keys(t.assignments).filter(k => parseInt(k) < t.seats).length;
@@ -1431,6 +1954,7 @@ function renderCanvas() {
     countEl.style.fontWeight = '500';
     countEl.style.opacity = '0.85';
     countEl.style.marginTop = '2px';
+    if (t.rotation) countEl.style.transform = `rotate(${-t.rotation}deg)`;
     shape.appendChild(countEl);
 
     wrap.appendChild(shape);
@@ -1453,13 +1977,12 @@ function renderCanvas() {
 
     // seats
     for (let i = 0; i < t.seats; i++) {
-      const angle = (i / t.seats) * Math.PI * 2 - Math.PI / 2;
-      const sx = totalSize/2 + Math.cos(angle) * radius - 18;
-      const sy = totalSize/2 + Math.sin(angle) * radius - 18;
+      const pos = layout.seats[i];
       const seat = document.createElement('div');
       seat.className = 'seat';
-      seat.style.left = sx + 'px';
-      seat.style.top = sy + 'px';
+      seat.style.left = pos.x + 'px';
+      seat.style.top = pos.y + 'px';
+      if (t.rotation) seat.style.transform = `rotate(${-t.rotation}deg)`;
 
       const guestId = t.assignments[i];
       if (guestId) {
@@ -1948,7 +2471,9 @@ document.getElementById('canvas').addEventListener('mousedown', (ev) => {
     document.body.style.cursor = '';
     if (!moved) {
       selectedTableId = null;
+      selectedElementId = null;
       document.getElementById('selectedTablePanel').style.display = 'none';
+      document.getElementById('selectedElementPanel').style.display = 'none';
       render();
     }
   }
