@@ -315,6 +315,108 @@
     justify-content: flex-end;
     gap: 6px;
   }
+
+  /* RSVP indicators */
+  .rsvp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    margin-right: 6px;
+    flex-shrink: 0;
+  }
+  .rsvp.confirmed { background: #28a745; }
+  .rsvp.declined  { background: #d73a49; }
+  .rsvp.pending   { background: #c0c4ca; }
+  .guest.declined { text-decoration: line-through; }
+  .seat.conflict { box-shadow: 0 0 0 3px #f1c40f; }
+  .table-el.conflict .table-shape { box-shadow: 0 0 0 3px #f1c40f; }
+  .guest .notes-icon {
+    margin-left: 4px;
+    font-size: 11px;
+    color: #586069;
+  }
+
+  /* Edit modal (reuses picker styling) */
+  #editOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  #editOverlay.open { display: flex; }
+  #editModal {
+    background: white;
+    border-radius: 8px;
+    width: 440px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+  #editModal h3 { margin: 0 0 12px; text-transform: none; letter-spacing: 0; font-size: 16px; color: #24292e; }
+  #editBody { padding: 16px; overflow-y: auto; }
+  #editFooter {
+    padding: 10px 14px;
+    border-top: 1px solid #e1e4e8;
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: #586069; margin-bottom: 3px; }
+  .field input[type=text], .field textarea, .field select { width: 100%; }
+  .rsvp-radio { display: flex; gap: 8px; }
+  .rsvp-radio label {
+    flex: 1;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    padding: 6px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 13px;
+    color: #24292e;
+  }
+  .rsvp-radio input { display: none; }
+  .rsvp-radio input:checked + span {
+    color: white;
+  }
+  .rsvp-radio label.confirmed input:checked ~ span,
+  .rsvp-radio label.confirmed:has(input:checked) { background: #28a745; color: white; border-color: #28a745; }
+  .rsvp-radio label.declined:has(input:checked) { background: #d73a49; color: white; border-color: #d73a49; }
+  .rsvp-radio label.pending:has(input:checked) { background: #6a737d; color: white; border-color: #6a737d; }
+  .avoid-list { display: flex; flex-direction: column; gap: 4px; }
+  .avoid-pill {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fdebec;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .avoid-pill button {
+    background: transparent;
+    color: #721c24;
+    padding: 0 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .avoid-add { display: flex; gap: 6px; margin-top: 6px; }
+  .avoid-add select { flex: 1; }
 </style>
 </head>
 <body>
@@ -395,8 +497,13 @@
     <textarea id="guestInput" placeholder="Anna Müller | Familie&#10;Tom Schmidt | Familie&#10;Lisa Klein | Freunde"></textarea>
     <div class="row" style="margin-top:6px;">
       <button onclick="loadGuests()">Liste übernehmen</button>
+      <button class="secondary" onclick="document.getElementById('csvFile').click()" title="CSV mit Spalten Name,Gruppe,RSVP,Notiz">CSV-Import</button>
+      <input type="file" id="csvFile" style="display:none" accept=".csv,text/csv" onchange="importGuestsCsv(event)">
       <button class="secondary" onclick="autoAssign()">Auto-Zuweisung</button>
     </div>
+    <p style="margin:6px 0 0; font-size:11px; color:#586069;">
+      Tipp: Doppelklick auf einen Gast in der Liste öffnet die Bearbeitung (RSVP, Notizen, „Nicht zusammen mit").
+    </p>
   </div>
 
   <div class="panel">
@@ -408,7 +515,8 @@
   <div class="stats">
     <div class="stat"><div class="stat-value" id="statPlaced">0</div><div class="stat-label">Platziert</div></div>
     <div class="stat"><div class="stat-value" id="statUnplaced">0</div><div class="stat-label">Offen</div></div>
-    <div class="stat"><div class="stat-value" id="statSeats">0</div><div class="stat-label">Sitze gesamt</div></div>
+    <div class="stat"><div class="stat-value" id="statSeats">0</div><div class="stat-label">Sitze</div></div>
+    <div class="stat" style="display:none;"><div class="stat-value" id="statDeclined" style="color:#d73a49;">0</div><div class="stat-label">Abgesagt</div></div>
   </div>
 
   <div class="panel">
@@ -445,6 +553,49 @@
   </div>
 </div>
 
+<div id="editOverlay" onclick="if(event.target===this) closeEdit()">
+  <div id="editModal">
+    <div id="editBody">
+      <h3>Gast bearbeiten</h3>
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="editName">
+      </div>
+      <div class="field">
+        <label>Gruppe</label>
+        <input type="text" id="editGroup" placeholder="z.B. Familie, Freunde">
+      </div>
+      <div class="field">
+        <label>RSVP-Status</label>
+        <div class="rsvp-radio">
+          <label class="confirmed"><input type="radio" name="editRsvp" value="confirmed"><span>✓ Zugesagt</span></label>
+          <label class="pending"><input type="radio" name="editRsvp" value="pending"><span>? Offen</span></label>
+          <label class="declined"><input type="radio" name="editRsvp" value="declined"><span>✗ Abgesagt</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Notizen (Allergien, Kind, etc.)</label>
+        <textarea id="editNotes" rows="2" style="resize:vertical;"></textarea>
+      </div>
+      <div class="field">
+        <label>Nicht zusammen mit</label>
+        <div class="avoid-list" id="avoidList"></div>
+        <div class="avoid-add">
+          <select id="avoidAddSelect"><option value="">+ Person hinzufügen…</option></select>
+          <button onclick="addAvoidFromSelect()">Hinzufügen</button>
+        </div>
+      </div>
+    </div>
+    <div id="editFooter">
+      <button class="danger" onclick="deleteEditingGuest()">Gast löschen</button>
+      <div style="display:flex; gap:6px;">
+        <button class="secondary" onclick="closeEdit()">Abbrechen</button>
+        <button onclick="saveEdit()">Speichern</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="pickerOverlay" onclick="if(event.target===this) closePicker()">
   <div id="pickerModal">
     <div id="pickerHeader">
@@ -465,6 +616,18 @@ const GROUP_COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c
 
 function freshPlanState() {
   return { tables: [], guests: [], nextTableId: 1, nextGuestId: 1 };
+}
+
+function normalizeGuest(g) {
+  if (g.rsvp === undefined) g.rsvp = 'pending';
+  if (g.notes === undefined) g.notes = '';
+  if (!Array.isArray(g.avoid)) g.avoid = [];
+  return g;
+}
+
+function normalizeState(s) {
+  if (Array.isArray(s.guests)) s.guests.forEach(normalizeGuest);
+  return s;
 }
 
 let planStore = { plans: {}, planMeta: {}, activePlanId: null };
@@ -588,6 +751,7 @@ function load() {
   if (v2raw) {
     try {
       planStore = JSON.parse(v2raw);
+      Object.values(planStore.plans || {}).forEach(normalizeState);
       if (planStore.activePlanId && planStore.plans[planStore.activePlanId]) {
         state = planStore.plans[planStore.activePlanId];
         return;
@@ -598,7 +762,7 @@ function load() {
   const v1raw = localStorage.getItem(STORAGE_KEY_V1);
   let initialState = freshPlanState();
   if (v1raw) {
-    try { initialState = JSON.parse(v1raw); } catch(e) {}
+    try { initialState = normalizeState(JSON.parse(v1raw)); } catch(e) {}
   }
   const id = newPlanId();
   planStore = {
@@ -839,7 +1003,6 @@ function changeSeats(delta) {
 function loadGuests() {
   const text = document.getElementById('guestInput').value;
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  // Build map of existing by name
   const existing = new Map(state.guests.map(g => [g.name, g]));
   const newGuests = [];
   for (const line of lines) {
@@ -851,23 +1014,108 @@ function loadGuests() {
       newGuests.push(g);
       existing.delete(namePart);
     } else {
-      newGuests.push({
+      newGuests.push(normalizeGuest({
         id: state.nextGuestId++,
         name: namePart,
         group: groupPart || null,
-      });
+      }));
     }
   }
-  // Remove assignments of deleted guests
   const removedIds = new Set([...existing.values()].map(g => g.id));
+  // Clear seat assignments and avoid-refs for removed guests
   state.tables.forEach(t => {
     Object.keys(t.assignments).forEach(k => {
       if (removedIds.has(t.assignments[k])) delete t.assignments[k];
     });
   });
+  newGuests.forEach(g => {
+    g.avoid = (g.avoid || []).filter(id => !removedIds.has(id));
+  });
   state.guests = newGuests;
   save();
   render();
+}
+
+// --- CSV import (merge: add new, update existing by name; never delete) ---
+function parseCSV(text) {
+  // Simple CSV parser supporting quoted fields with commas
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',' || c === ';') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* skip */ }
+      else field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => c && c.trim()));
+}
+
+function importGuestsCsv(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const rows = parseCSV(e.target.result);
+      if (rows.length === 0) { alert('CSV ist leer.'); return; }
+      // Detect header
+      const header = rows[0].map(h => h.trim().toLowerCase());
+      const idxName  = header.findIndex(h => /^(name|gast|guest)$/.test(h));
+      const idxGroup = header.findIndex(h => /^(gruppe|group)$/.test(h));
+      const idxRsvp  = header.findIndex(h => /^(rsvp|status|zusage)$/.test(h));
+      const idxNotes = header.findIndex(h => /^(notiz|notizen|notes|anmerkung)$/.test(h));
+      const dataRows = idxName >= 0 ? rows.slice(1) : rows; // if no header, assume positional
+      const cols = idxName >= 0
+        ? { name: idxName, group: idxGroup, rsvp: idxRsvp, notes: idxNotes }
+        : { name: 0, group: 1, rsvp: 2, notes: 3 };
+      let added = 0, updated = 0;
+      const byName = new Map(state.guests.map(g => [g.name, g]));
+      for (const r of dataRows) {
+        const name = (r[cols.name] || '').trim();
+        if (!name) continue;
+        const group = cols.group >= 0 ? (r[cols.group] || '').trim() || null : null;
+        const rsvpRaw = cols.rsvp >= 0 ? (r[cols.rsvp] || '').trim().toLowerCase() : '';
+        const rsvp = /^(y|yes|ja|j|zugesagt|confirmed|✓|x|true|1)$/.test(rsvpRaw) ? 'confirmed'
+                   : /^(n|no|nein|abgesagt|declined|0|false)$/.test(rsvpRaw) ? 'declined'
+                   : 'pending';
+        const notes = cols.notes >= 0 ? (r[cols.notes] || '').trim() : '';
+        if (byName.has(name)) {
+          const g = byName.get(name);
+          if (group !== null) g.group = group;
+          if (rsvpRaw) g.rsvp = rsvp;
+          if (notes) g.notes = notes;
+          updated++;
+        } else {
+          state.guests.push(normalizeGuest({
+            id: state.nextGuestId++,
+            name, group, rsvp, notes,
+          }));
+          added++;
+        }
+      }
+      // refresh textarea so the user sees imported names
+      document.getElementById('guestInput').value = '';
+      save();
+      render();
+      alert(`CSV importiert.\nNeu: ${added}\nAktualisiert: ${updated}`);
+    } catch (err) {
+      alert('Fehler beim CSV-Import: ' + err.message);
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
 }
 
 function isPlaced(guestId) {
@@ -902,11 +1150,11 @@ function clearSeat(tableId, seatIdx) {
 }
 
 function autoAssign() {
-  // Group guests by group
+  // Eligible: not yet placed and not declined
   const byGroup = {};
   const ungrouped = [];
   for (const g of state.guests) {
-    if (isPlaced(g.id)) continue;
+    if (isPlaced(g.id) || g.rsvp === 'declined') continue;
     if (g.group) {
       if (!byGroup[g.group]) byGroup[g.group] = [];
       byGroup[g.group].push(g);
@@ -914,38 +1162,55 @@ function autoAssign() {
       ungrouped.push(g);
     }
   }
-  // Sort groups by size descending
-  const groups = Object.entries(byGroup).sort((a,b) => b[1].length - a[1].length);
+  const groups = Object.entries(byGroup).sort((a, b) => b[1].length - a[1].length);
   groups.push(['_solo', ungrouped]);
 
-  // For each group, find table with most consecutive free seats
+  const unplaceable = [];
+  function tableConflict(table, guest) {
+    const ids = Object.values(table.assignments);
+    const avoid = guest.avoid || [];
+    return avoid.some(a => ids.includes(a));
+  }
+
   for (const [, members] of groups) {
     let i = 0;
     while (i < members.length) {
-      const remaining = members.length - i;
-      // Find best table: most free seats, but at least try to fit group
+      const guest = members[i];
+      // Find best table: most free seats, no conflict
       let best = null;
       for (const t of state.tables) {
+        if (tableConflict(t, guest)) continue;
         const freeSeats = [];
         for (let s = 0; s < t.seats; s++) {
           if (!t.assignments[s]) freeSeats.push(s);
         }
         if (freeSeats.length === 0) continue;
-        const score = Math.min(freeSeats.length, remaining);
+        // Prefer tables that already contain group members
+        const groupBoost = guest.group
+          ? Object.values(t.assignments).some(id => {
+              const og = state.guests.find(x => x.id === id);
+              return og && og.group === guest.group;
+            }) ? 1000 : 0
+          : 0;
+        const score = freeSeats.length + groupBoost;
         if (!best || score > best.score) {
-          best = { table: t, freeSeats, score };
+          best = { table: t, freeSeat: freeSeats[0], score };
         }
       }
-      if (!best) break; // no space left
-      const toPlace = Math.min(best.freeSeats.length, remaining);
-      for (let k = 0; k < toPlace; k++) {
-        best.table.assignments[best.freeSeats[k]] = members[i + k].id;
+      if (!best) {
+        unplaceable.push(guest);
+      } else {
+        best.table.assignments[best.freeSeat] = guest.id;
       }
-      i += toPlace;
+      i++;
     }
   }
   save();
   render();
+  if (unplaceable.length) {
+    alert(`${unplaceable.length} Gast/Gäste konnten nicht platziert werden (kein passender Tisch ohne Konflikt):\n\n` +
+      unplaceable.map(g => '• ' + g.name).join('\n'));
+  }
 }
 
 // --- Plan search ---
@@ -1073,7 +1338,7 @@ function importData(event) {
         // merge plans (give them new ids to avoid clashes)
         for (const [oldId, p] of Object.entries(data.planStore.plans || {})) {
           const newId = newPlanId();
-          planStore.plans[newId] = p;
+          planStore.plans[newId] = normalizeState(p);
           const meta = (data.planStore.planMeta || {})[oldId] || { name: 'Importiert' };
           planStore.planMeta[newId] = { ...meta, createdAt: meta.createdAt || Date.now(), updatedAt: Date.now() };
         }
@@ -1096,7 +1361,7 @@ function importData(event) {
         return;
       }
       const id = newPlanId();
-      planStore.plans[id] = imported;
+      planStore.plans[id] = normalizeState(imported);
       planStore.planMeta[id] = { name, createdAt: Date.now(), updatedAt: Date.now() };
       switchPlan(id);
     } catch (err) {
@@ -1170,6 +1435,22 @@ function renderCanvas() {
 
     wrap.appendChild(shape);
 
+    // detect avoid-conflicts at this table
+    const tableGuests = Object.values(t.assignments)
+      .map(id => state.guests.find(x => x.id === id))
+      .filter(Boolean);
+    const conflictIds = new Set();
+    for (const g of tableGuests) {
+      const avoid = g.avoid || [];
+      for (const otherId of avoid) {
+        if (tableGuests.some(x => x.id === otherId)) {
+          conflictIds.add(g.id);
+          conflictIds.add(otherId);
+        }
+      }
+    }
+    if (conflictIds.size) el.classList.add('conflict');
+
     // seats
     for (let i = 0; i < t.seats; i++) {
       const angle = (i / t.seats) * Math.PI * 2 - Math.PI / 2;
@@ -1186,7 +1467,16 @@ function renderCanvas() {
         if (guest) {
           seat.classList.add('occupied');
           seat.textContent = shortName(guest.name);
-          seat.title = guest.name + (guest.group ? ' (' + guest.group + ')' : '');
+          let tip = guest.name;
+          if (guest.group) tip += ' (' + guest.group + ')';
+          if (guest.notes) tip += '\n📝 ' + guest.notes;
+          if (guest.rsvp === 'declined') tip += '\n✗ abgesagt';
+          if (guest.rsvp === 'pending') tip += '\n? offen';
+          if (conflictIds.has(guest.id)) {
+            seat.classList.add('conflict');
+            tip += '\n⚠ Konflikt mit anderem Gast am Tisch';
+          }
+          seat.title = tip;
           if (guest.group) {
             seat.style.background = groupColor(guest.group);
             seat.style.borderColor = darken(groupColor(guest.group));
@@ -1274,9 +1564,130 @@ function closePicker() {
   document.getElementById('pickerOverlay').classList.remove('open');
 }
 
+// --- Guest edit modal ---
+let editingGuestId = null;
+
+function openGuestEdit(guestId) {
+  const g = state.guests.find(x => x.id === guestId);
+  if (!g) return;
+  normalizeGuest(g);
+  editingGuestId = guestId;
+  document.getElementById('editName').value = g.name;
+  document.getElementById('editGroup').value = g.group || '';
+  document.querySelectorAll('input[name=editRsvp]').forEach(r => r.checked = (r.value === g.rsvp));
+  document.getElementById('editNotes').value = g.notes || '';
+  renderAvoidList();
+  populateAvoidSelect();
+  document.getElementById('editOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('editName').focus(), 0);
+}
+
+function closeEdit() {
+  editingGuestId = null;
+  document.getElementById('editOverlay').classList.remove('open');
+}
+
+function renderAvoidList() {
+  const g = state.guests.find(x => x.id === editingGuestId);
+  const list = document.getElementById('avoidList');
+  list.innerHTML = '';
+  if (!g || !g.avoid.length) {
+    list.innerHTML = '<div style="font-size:12px; color:#586069;">Keine Einschränkungen.</div>';
+    return;
+  }
+  for (const otherId of g.avoid) {
+    const other = state.guests.find(x => x.id === otherId);
+    if (!other) continue;
+    const pill = document.createElement('div');
+    pill.className = 'avoid-pill';
+    pill.innerHTML = `<span>${escapeHtml(other.name)}</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = '×';
+    btn.title = 'Entfernen';
+    btn.onclick = () => removeAvoid(otherId);
+    pill.appendChild(btn);
+    list.appendChild(pill);
+  }
+}
+
+function populateAvoidSelect() {
+  const g = state.guests.find(x => x.id === editingGuestId);
+  const sel = document.getElementById('avoidAddSelect');
+  sel.innerHTML = '<option value="">+ Person hinzufügen…</option>';
+  if (!g) return;
+  const others = state.guests
+    .filter(x => x.id !== g.id && !g.avoid.includes(x.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const o of others) {
+    const opt = document.createElement('option');
+    opt.value = o.id;
+    opt.textContent = o.name + (o.group ? ' (' + o.group + ')' : '');
+    sel.appendChild(opt);
+  }
+}
+
+function addAvoidFromSelect() {
+  const sel = document.getElementById('avoidAddSelect');
+  const otherId = parseInt(sel.value);
+  if (!otherId) return;
+  const g = state.guests.find(x => x.id === editingGuestId);
+  const other = state.guests.find(x => x.id === otherId);
+  if (!g || !other) return;
+  if (!g.avoid.includes(otherId)) g.avoid.push(otherId);
+  // symmetric
+  if (!other.avoid.includes(g.id)) other.avoid.push(g.id);
+  sel.value = '';
+  renderAvoidList();
+  populateAvoidSelect();
+}
+
+function removeAvoid(otherId) {
+  const g = state.guests.find(x => x.id === editingGuestId);
+  const other = state.guests.find(x => x.id === otherId);
+  if (g) g.avoid = g.avoid.filter(id => id !== otherId);
+  if (other) other.avoid = other.avoid.filter(id => id !== editingGuestId);
+  renderAvoidList();
+  populateAvoidSelect();
+}
+
+function saveEdit() {
+  const g = state.guests.find(x => x.id === editingGuestId);
+  if (!g) return;
+  const newName = document.getElementById('editName').value.trim();
+  if (!newName) { alert('Name darf nicht leer sein.'); return; }
+  g.name = newName;
+  g.group = document.getElementById('editGroup').value.trim() || null;
+  const checked = document.querySelector('input[name=editRsvp]:checked');
+  g.rsvp = checked ? checked.value : 'pending';
+  g.notes = document.getElementById('editNotes').value.trim();
+  closeEdit();
+  // force refresh of guest input textarea
+  document.getElementById('guestInput').value = '';
+  save();
+  render();
+}
+
+function deleteEditingGuest() {
+  const g = state.guests.find(x => x.id === editingGuestId);
+  if (!g) return;
+  if (!confirm(`Gast „${g.name}" wirklich löschen?`)) return;
+  // remove avoid references and seat assignments
+  state.guests.forEach(x => { x.avoid = (x.avoid || []).filter(id => id !== g.id); });
+  state.tables.forEach(t => {
+    Object.keys(t.assignments).forEach(k => {
+      if (t.assignments[k] === g.id) delete t.assignments[k];
+    });
+  });
+  state.guests = state.guests.filter(x => x.id !== g.id);
+  closeEdit();
+  document.getElementById('guestInput').value = '';
+  save();
+  render();
+}
+
 function getPickerCandidates() {
   const q = document.getElementById('pickerSearch').value.trim().toLowerCase();
-  const unplaced = state.guests.filter(g => !isPlaced(g.id));
+  const unplaced = state.guests.filter(g => !isPlaced(g.id) && g.rsvp !== 'declined');
   unplaced.sort((a,b) => {
     if (a.group !== b.group) return (a.group||'zzz').localeCompare(b.group||'zzz');
     return a.name.localeCompare(b.name);
@@ -1302,10 +1713,16 @@ function renderPickerList() {
     list.appendChild(empty);
     return;
   }
+  // detect conflicts at the target table
+  const targetTable = pickerContext ? state.tables.find(t => t.id === pickerContext.tableId) : null;
+  const tableGuestIds = targetTable ? Object.values(targetTable.assignments) : [];
   items.forEach((g, i) => {
     const el = document.createElement('div');
     el.className = 'picker-item' + (i === pickerActiveIdx ? ' active' : '');
     const left = document.createElement('span');
+    left.style.display = 'inline-flex';
+    left.style.alignItems = 'center';
+    left.appendChild(rsvpBadge(g));
     if (g.group) {
       const dot = document.createElement('span');
       dot.className = 'group-color';
@@ -1313,6 +1730,15 @@ function renderPickerList() {
       left.appendChild(dot);
     }
     left.appendChild(document.createTextNode(g.name));
+    // conflict indicator
+    const conflictWith = (g.avoid || []).filter(id => tableGuestIds.includes(id));
+    if (conflictWith.length) {
+      const warn = document.createElement('span');
+      warn.textContent = ' ⚠';
+      warn.title = 'Konflikt: ' + conflictWith.map(id => (state.guests.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ');
+      warn.style.color = '#d73a49';
+      left.appendChild(warn);
+    }
     el.appendChild(left);
     if (g.group) {
       const tag = document.createElement('span');
@@ -1327,6 +1753,14 @@ function renderPickerList() {
     });
     list.appendChild(el);
   });
+}
+
+function rsvpBadge(g) {
+  const span = document.createElement('span');
+  span.className = 'rsvp ' + (g.rsvp || 'pending');
+  span.title = g.rsvp === 'confirmed' ? 'Zugesagt' : g.rsvp === 'declined' ? 'Abgesagt' : 'Offen';
+  span.textContent = g.rsvp === 'confirmed' ? '✓' : g.rsvp === 'declined' ? '✗' : '?';
+  return span;
 }
 
 function pickGuest(guestId) {
@@ -1405,12 +1839,18 @@ function renderGuestLists() {
   });
 
   for (const g of sorted) {
+    normalizeGuest(g);
     const el = document.createElement('div');
     el.className = 'guest';
+    if (g.rsvp === 'declined') el.classList.add('declined');
     const placed = isPlaced(g.id);
     if (placed) el.classList.add('placed');
 
     const left = document.createElement('span');
+    left.style.display = 'inline-flex';
+    left.style.alignItems = 'center';
+    left.style.flex = '1';
+    left.appendChild(rsvpBadge(g));
     if (g.group) {
       const dot = document.createElement('span');
       dot.className = 'group-color';
@@ -1418,6 +1858,13 @@ function renderGuestLists() {
       left.appendChild(dot);
     }
     left.appendChild(document.createTextNode(g.name));
+    if (g.notes) {
+      const note = document.createElement('span');
+      note.className = 'notes-icon';
+      note.textContent = '📝';
+      note.title = g.notes;
+      left.appendChild(note);
+    }
     el.appendChild(left);
 
     if (g.group) {
@@ -1427,14 +1874,20 @@ function renderGuestLists() {
       el.appendChild(tag);
     }
 
+    // Right-click or shift-click to edit; otherwise drag/place actions
+    el.addEventListener('contextmenu', (ev) => { ev.preventDefault(); openGuestEdit(g.id); });
+
     if (!placed) {
       el.draggable = true;
+      el.title = 'Ziehen oder Doppelklick zum Bearbeiten';
       el.addEventListener('dragstart', () => { dragGuestId = g.id; });
       el.addEventListener('dragend', () => { dragGuestId = null; });
+      el.addEventListener('dblclick', () => openGuestEdit(g.id));
       unplacedEl.appendChild(el);
     } else {
-      el.title = 'Klick: freigeben';
+      el.title = 'Klick: freigeben · Doppelklick: bearbeiten';
       el.style.cursor = 'pointer';
+      el.addEventListener('dblclick', (ev) => { ev.stopPropagation(); openGuestEdit(g.id); });
       el.addEventListener('click', () => {
         if (confirm(`${g.name} vom Sitz nehmen?`)) {
           unassignGuest(g.id);
@@ -1455,11 +1908,19 @@ function renderGuestLists() {
 }
 
 function renderStats() {
-  const placed = state.guests.filter(g => isPlaced(g.id)).length;
+  const eligible = state.guests.filter(g => g.rsvp !== 'declined');
+  const placed = eligible.filter(g => isPlaced(g.id)).length;
   const totalSeats = state.tables.reduce((s,t) => s + t.seats, 0);
   document.getElementById('statPlaced').textContent = placed;
-  document.getElementById('statUnplaced').textContent = state.guests.length - placed;
+  document.getElementById('statUnplaced').textContent = eligible.length - placed;
   document.getElementById('statSeats').textContent = totalSeats;
+  // optional fourth stat (declined count) shown only if any
+  const declinedCount = state.guests.length - eligible.length;
+  const declinedEl = document.getElementById('statDeclined');
+  if (declinedEl) {
+    declinedEl.textContent = declinedCount;
+    declinedEl.parentElement.style.display = declinedCount ? '' : 'none';
+  }
 }
 
 // Pan canvas by click+hold on empty area; simple click (no drag) deselects
