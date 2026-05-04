@@ -323,10 +323,26 @@
   <div>
     <h2>Tischplaner</h2>
     <div class="row">
-      <button onclick="exportData()">Export</button>
+      <button onclick="exportData()" title="Aktuellen Plan exportieren">Export</button>
+      <button class="secondary" onclick="exportAllPlans()" title="Alle Pläne exportieren">Alle</button>
       <button class="secondary" onclick="document.getElementById('importFile').click()">Import</button>
       <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
-      <button class="danger" onclick="if(confirm('Alles zurücksetzen?')) resetAll()">Reset</button>
+      <button class="danger" onclick="if(confirm('Diesen Plan zurücksetzen?')) resetAll()">Reset</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Plan</h3>
+    <div class="row">
+      <select id="planSelector" onchange="switchPlan(this.value)" style="flex:1; min-width:0;"></select>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button onclick="newPlan()" title="Neuer Plan">+ Neu</button>
+      <button class="secondary" onclick="renamePlan()" title="Umbenennen">Umbenennen</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button class="secondary" onclick="duplicatePlan()">Duplizieren</button>
+      <button class="danger" onclick="deletePlan()">Löschen</button>
     </div>
   </div>
 
@@ -443,15 +459,16 @@
 </div>
 
 <script>
-const STORAGE_KEY = 'seatplanner-v1';
+const STORAGE_KEY_V1 = 'seatplanner-v1';
+const STORAGE_KEY = 'seatplanner-v2';
 const GROUP_COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
 
-let state = {
-  tables: [],
-  guests: [],
-  nextTableId: 1,
-  nextGuestId: 1,
-};
+function freshPlanState() {
+  return { tables: [], guests: [], nextTableId: 1, nextGuestId: 1 };
+}
+
+let planStore = { plans: {}, planMeta: {}, activePlanId: null };
+let state = freshPlanState();
 
 let selectedTableId = null;
 let dragGuestId = null;
@@ -556,14 +573,141 @@ function refreshSelectedPanel() {
 }
 
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (planStore.activePlanId) {
+    planStore.plans[planStore.activePlanId] = state;
+    if (planStore.planMeta[planStore.activePlanId]) {
+      planStore.planMeta[planStore.activePlanId].updatedAt = Date.now();
+    }
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
   pushHistory();
 }
 
 function load() {
-  const s = localStorage.getItem(STORAGE_KEY);
-  if (s) {
-    try { state = JSON.parse(s); } catch(e) {}
+  const v2raw = localStorage.getItem(STORAGE_KEY);
+  if (v2raw) {
+    try {
+      planStore = JSON.parse(v2raw);
+      if (planStore.activePlanId && planStore.plans[planStore.activePlanId]) {
+        state = planStore.plans[planStore.activePlanId];
+        return;
+      }
+    } catch(e) {}
+  }
+  // Try migration from v1
+  const v1raw = localStorage.getItem(STORAGE_KEY_V1);
+  let initialState = freshPlanState();
+  if (v1raw) {
+    try { initialState = JSON.parse(v1raw); } catch(e) {}
+  }
+  const id = newPlanId();
+  planStore = {
+    plans: { [id]: initialState },
+    planMeta: { [id]: { name: 'Plan 1', createdAt: Date.now(), updatedAt: Date.now() } },
+    activePlanId: id,
+  };
+  state = initialState;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+}
+
+function newPlanId() {
+  return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function listPlans() {
+  return Object.entries(planStore.planMeta)
+    .map(([id, meta]) => ({ id, ...meta }))
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+function switchPlan(id) {
+  if (!planStore.plans[id] || id === planStore.activePlanId) {
+    renderPlanSelector();
+    return;
+  }
+  // persist current state first
+  planStore.plans[planStore.activePlanId] = state;
+  planStore.activePlanId = id;
+  state = planStore.plans[id];
+  selectedTableId = null;
+  document.getElementById('selectedTablePanel').style.display = 'none';
+  document.getElementById('guestInput').value = '';
+  document.getElementById('planSearch').value = '';
+  document.getElementById('searchResults').innerHTML = '';
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+  // reset history for new plan
+  history = [JSON.stringify(state)];
+  historyIndex = 0;
+  updateUndoButtons();
+  render();
+}
+
+function newPlan() {
+  const name = prompt('Name für den neuen Plan:', 'Neuer Plan');
+  if (!name) return;
+  const id = newPlanId();
+  planStore.plans[id] = freshPlanState();
+  planStore.planMeta[id] = { name: name.trim(), createdAt: Date.now(), updatedAt: Date.now() };
+  switchPlan(id);
+}
+
+function renamePlan() {
+  const id = planStore.activePlanId;
+  if (!id) return;
+  const current = planStore.planMeta[id]?.name || '';
+  const name = prompt('Neuer Name:', current);
+  if (!name || !name.trim()) return;
+  planStore.planMeta[id].name = name.trim();
+  planStore.planMeta[id].updatedAt = Date.now();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+  renderPlanSelector();
+}
+
+function duplicatePlan() {
+  const srcId = planStore.activePlanId;
+  if (!srcId) return;
+  // persist current
+  planStore.plans[srcId] = state;
+  const id = newPlanId();
+  planStore.plans[id] = JSON.parse(JSON.stringify(state));
+  const srcName = planStore.planMeta[srcId]?.name || 'Plan';
+  planStore.planMeta[id] = { name: srcName + ' (Kopie)', createdAt: Date.now(), updatedAt: Date.now() };
+  switchPlan(id);
+}
+
+function deletePlan() {
+  const id = planStore.activePlanId;
+  if (!id) return;
+  if (Object.keys(planStore.plans).length <= 1) {
+    alert('Der letzte Plan kann nicht gelöscht werden. Lege erst einen neuen an.');
+    return;
+  }
+  const name = planStore.planMeta[id]?.name || 'Plan';
+  if (!confirm(`Plan „${name}" wirklich löschen?`)) return;
+  delete planStore.plans[id];
+  delete planStore.planMeta[id];
+  const nextId = Object.keys(planStore.plans)[0];
+  planStore.activePlanId = nextId;
+  state = planStore.plans[nextId];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+  selectedTableId = null;
+  document.getElementById('selectedTablePanel').style.display = 'none';
+  history = [JSON.stringify(state)];
+  historyIndex = 0;
+  updateUndoButtons();
+  render();
+}
+
+function renderPlanSelector() {
+  const sel = document.getElementById('planSelector');
+  if (!sel) return;
+  sel.innerHTML = '';
+  for (const p of listPlans()) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === planStore.activePlanId) opt.selected = true;
+    sel.appendChild(opt);
   }
 }
 
@@ -880,7 +1024,8 @@ function focusOnTable(tableId, seatIdx) {
 }
 
 function resetAll() {
-  state = { tables: [], guests: [], nextTableId: 1, nextGuestId: 1 };
+  // Reset only the current plan, keep other plans intact
+  Object.assign(state, freshPlanState());
   selectedTableId = null;
   document.getElementById('selectedTablePanel').style.display = 'none';
   document.getElementById('guestInput').value = '';
@@ -888,14 +1033,32 @@ function resetAll() {
   render();
 }
 
-function exportData() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'tischplan.json';
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function planFileName(name) {
+  return (name || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'plan';
+}
+
+function exportData() {
+  const id = planStore.activePlanId;
+  const meta = planStore.planMeta[id] || {};
+  const payload = { format: 'seatplanner-plan', version: 2, name: meta.name, plan: state };
+  downloadJson(payload, planFileName(meta.name) + '.json');
+}
+
+function exportAllPlans() {
+  // persist current
+  if (planStore.activePlanId) planStore.plans[planStore.activePlanId] = state;
+  const payload = { format: 'seatplanner-bundle', version: 2, planStore };
+  downloadJson(payload, 'tischplaene-alle.json');
 }
 
 function importData(event) {
@@ -904,11 +1067,43 @@ function importData(event) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      state = JSON.parse(e.target.result);
-      save();
-      render();
+      const data = JSON.parse(e.target.result);
+      // Bundle of all plans
+      if (data && data.format === 'seatplanner-bundle' && data.planStore) {
+        // merge plans (give them new ids to avoid clashes)
+        for (const [oldId, p] of Object.entries(data.planStore.plans || {})) {
+          const newId = newPlanId();
+          planStore.plans[newId] = p;
+          const meta = (data.planStore.planMeta || {})[oldId] || { name: 'Importiert' };
+          planStore.planMeta[newId] = { ...meta, createdAt: meta.createdAt || Date.now(), updatedAt: Date.now() };
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(planStore));
+        renderPlanSelector();
+        alert('Pläne importiert.');
+        return;
+      }
+      // Single plan (new format)
+      let imported, name;
+      if (data && data.format === 'seatplanner-plan' && data.plan) {
+        imported = data.plan;
+        name = data.name || 'Importiert';
+      } else if (data && Array.isArray(data.tables)) {
+        // legacy v1 single state object
+        imported = data;
+        name = 'Importiert';
+      } else {
+        alert('Ungültige Datei');
+        return;
+      }
+      const id = newPlanId();
+      planStore.plans[id] = imported;
+      planStore.planMeta[id] = { name, createdAt: Date.now(), updatedAt: Date.now() };
+      switchPlan(id);
     } catch (err) {
       alert('Ungültige Datei');
+    } finally {
+      // allow re-import of same file
+      event.target.value = '';
     }
   };
   reader.readAsText(file);
@@ -916,6 +1111,7 @@ function importData(event) {
 
 // --- Rendering ---
 function render() {
+  renderPlanSelector();
   renderCanvas();
   renderGuestLists();
   renderStats();
