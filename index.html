@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tischplaner</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f5f7;
+    color: #222;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+  #sidebar {
+    width: 320px;
+    background: #fff;
+    border-right: 1px solid #e1e4e8;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 16px;
+    gap: 16px;
+  }
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: auto;
+    background:
+      linear-gradient(#eaecef 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, #eaecef 1px, transparent 1px) 0 0 / 40px 40px,
+      #f4f5f7;
+  }
+  #canvas-sizer {
+    position: relative;
+    width: 2000px;
+    height: 2000px;
+  }
+  #canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2000px;
+    height: 2000px;
+    transform-origin: 0 0;
+  }
+  #zoomControls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    border-left: 1px solid #e1e4e8;
+    margin-left: 8px;
+    padding-left: 8px;
+  }
+  #zoomLevel {
+    font-size: 12px;
+    color: #586069;
+    min-width: 42px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .zoom-btn {
+    background: #f6f8fa;
+    color: #24292e;
+    border: 1px solid #d1d5da;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .zoom-btn:hover { background: #e1e4e8; }
+  h2 { margin: 0 0 8px; font-size: 16px; color: #24292e; }
+  h3 { margin: 0 0 6px; font-size: 13px; color: #586069; text-transform: uppercase; letter-spacing: 0.5px; }
+  .panel {
+    background: #fafbfc;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 12px;
+  }
+  button {
+    background: #0366d6;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: #0256b3; }
+  button.secondary { background: #6a737d; }
+  button.secondary:hover { background: #586069; }
+  button.danger { background: #d73a49; }
+  button.danger:hover { background: #cb2431; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  label { font-size: 12px; color: #586069; }
+  input[type="number"], input[type="text"], select {
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 13px;
+    width: 100%;
+  }
+  input[type="number"] { width: 60px; }
+  textarea {
+    width: 100%;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 13px;
+    font-family: monospace;
+    resize: vertical;
+    min-height: 100px;
+  }
+  .table-el {
+    position: absolute;
+    cursor: move;
+    user-select: none;
+  }
+  .table-el.selected .table-shape {
+    box-shadow: 0 0 0 3px #0366d6;
+  }
+  .table-shape {
+    background: #c8a165;
+    border: 2px solid #8b6f43;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3d2e15;
+    font-weight: 600;
+    font-size: 14px;
+    text-align: center;
+    padding: 4px;
+  }
+  .table-shape.round { border-radius: 50%; }
+  .seat {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #e1e4e8;
+    border: 2px solid #959da5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    text-align: center;
+    cursor: pointer;
+    overflow: hidden;
+    line-height: 1.1;
+    padding: 2px;
+    transition: background 0.15s;
+  }
+  .seat.occupied {
+    background: #28a745;
+    border-color: #1f7a34;
+    color: white;
+  }
+  .seat.drop-hover {
+    background: #ffd33d;
+    border-color: #b08800;
+  }
+  .guest {
+    padding: 6px 8px;
+    margin: 2px 0;
+    background: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 4px;
+    cursor: grab;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .guest.placed { opacity: 0.5; background: #f6f8fa; }
+  .guest:active { cursor: grabbing; }
+  .guest .group-tag {
+    font-size: 10px;
+    background: #ddd;
+    color: #333;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+  .stats {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px;
+    background: #fafbfc;
+    border-radius: 4px;
+    border: 1px solid #e1e4e8;
+  }
+  .stat { text-align: center; }
+  .stat-value { font-size: 20px; font-weight: 600; color: #0366d6; }
+  .stat-label { font-size: 11px; color: #586069; }
+  #toolbar {
+    position: fixed;
+    top: 12px;
+    left: 332px;
+    display: flex;
+    gap: 6px;
+    z-index: 100;
+    background: white;
+    padding: 8px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .group-color {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+
+  /* Guest picker modal */
+  #pickerOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  #pickerOverlay.open { display: flex; }
+  #pickerModal {
+    background: white;
+    border-radius: 8px;
+    width: 380px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+  #pickerHeader {
+    padding: 14px 16px;
+    border-bottom: 1px solid #e1e4e8;
+  }
+  #pickerHeader h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #24292e;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  #pickerSearch {
+    width: 100%;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+  #pickerSearch:focus { outline: none; border-color: #0366d6; box-shadow: 0 0 0 2px rgba(3,102,214,0.2); }
+  #pickerList {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .picker-item {
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+  }
+  .picker-item:hover, .picker-item.active {
+    background: #0366d6;
+    color: white;
+  }
+  .picker-item:hover .group-tag, .picker-item.active .group-tag {
+    background: rgba(255,255,255,0.25);
+    color: white;
+  }
+  .picker-empty {
+    padding: 20px;
+    text-align: center;
+    color: #586069;
+    font-size: 13px;
+  }
+  #pickerFooter {
+    padding: 10px 14px;
+    border-top: 1px solid #e1e4e8;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div>
+    <h2>Tischplaner</h2>
+    <div class="row">
+      <button onclick="exportData()">Export</button>
+      <button class="secondary" onclick="document.getElementById('importFile').click()">Import</button>
+      <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
+      <button class="danger" onclick="if(confirm('Alles zurücksetzen?')) resetAll()">Reset</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Tisch hinzufügen</h3>
+    <div class="row">
+      <label>Form:</label>
+      <select id="newShape">
+        <option value="round">Rund</option>
+        <option value="square">Eckig</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Sitze:</label>
+      <input type="number" id="newSeats" value="8" min="1" max="20">
+      <button onclick="addTable()">+ Tisch</button>
+    </div>
+  </div>
+
+  <div class="panel" id="selectedTablePanel" style="display:none;">
+    <h3>Ausgewählter Tisch</h3>
+    <div class="row">
+      <label>Name:</label>
+      <input type="text" id="tableName" oninput="updateSelectedTable()">
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Form:</label>
+      <select id="tableShape" onchange="updateSelectedTable()">
+        <option value="round">Rund</option>
+        <option value="square">Eckig</option>
+      </select>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <label>Sitze:</label>
+      <button class="secondary" onclick="changeSeats(-1)" title="Sitz entfernen">−</button>
+      <input type="number" id="tableSeats" min="1" max="30" oninput="updateSelectedTable()">
+      <button class="secondary" onclick="changeSeats(1)" title="Sitz hinzufügen">+</button>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button class="danger" onclick="deleteSelectedTable()">Tisch löschen</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Gäste</h3>
+    <p style="margin:0 0 4px; font-size:11px; color:#586069;">
+      Format: <code>Name</code> oder <code>Name | Gruppe</code> (eine pro Zeile)
+    </p>
+    <textarea id="guestInput" placeholder="Anna Müller | Familie&#10;Tom Schmidt | Familie&#10;Lisa Klein | Freunde"></textarea>
+    <div class="row" style="margin-top:6px;">
+      <button onclick="loadGuests()">Liste übernehmen</button>
+      <button class="secondary" onclick="autoAssign()">Auto-Zuweisung</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-value" id="statPlaced">0</div><div class="stat-label">Platziert</div></div>
+    <div class="stat"><div class="stat-value" id="statUnplaced">0</div><div class="stat-label">Offen</div></div>
+    <div class="stat"><div class="stat-value" id="statSeats">0</div><div class="stat-label">Sitze gesamt</div></div>
+  </div>
+
+  <div class="panel">
+    <details open>
+      <summary>Unplatzierte Gäste</summary>
+      <div id="unplacedList"></div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <details>
+      <summary>Platzierte Gäste</summary>
+      <div id="placedList"></div>
+    </details>
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <div id="toolbar">
+    <span style="font-size:12px; color:#586069; align-self:center;">Tipp: Tisch klicken zum Auswählen, ziehen zum Verschieben. Sitz klicken um Gast zuzuweisen.</span>
+    <div id="zoomControls">
+      <button class="zoom-btn" onclick="zoomBy(-0.1)" title="Verkleinern">−</button>
+      <span id="zoomLevel">100%</span>
+      <button class="zoom-btn" onclick="zoomBy(0.1)" title="Vergrößern">+</button>
+      <button class="zoom-btn" onclick="zoomReset()" title="Zoom zurücksetzen" style="width:auto; padding:0 6px; font-size:11px;">1:1</button>
+    </div>
+  </div>
+  <div id="canvas-sizer">
+    <div id="canvas"></div>
+  </div>
+</div>
+
+<div id="pickerOverlay" onclick="if(event.target===this) closePicker()">
+  <div id="pickerModal">
+    <div id="pickerHeader">
+      <h3 id="pickerTitle">Gast auswählen</h3>
+      <input type="text" id="pickerSearch" placeholder="Suchen…" oninput="renderPickerList()" onkeydown="handlePickerKey(event)">
+    </div>
+    <div id="pickerList"></div>
+    <div id="pickerFooter">
+      <button class="secondary" onclick="closePicker()">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'seatplanner-v1';
+const GROUP_COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
+
+let state = {
+  tables: [],
+  guests: [],
+  nextTableId: 1,
+  nextGuestId: 1,
+};
+
+let selectedTableId = null;
+let dragGuestId = null;
+let zoom = 1;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 3;
+const BASE_SIZE = 2000;
+
+function applyZoom(focusClientX, focusClientY) {
+  const wrap = document.getElementById('canvas-wrap');
+  const sizer = document.getElementById('canvas-sizer');
+  const canvas = document.getElementById('canvas');
+  const wrapRect = wrap.getBoundingClientRect();
+
+  // default focus = viewport center
+  const cx = (focusClientX !== undefined ? focusClientX : wrapRect.left + wrapRect.width / 2) - wrapRect.left;
+  const cy = (focusClientY !== undefined ? focusClientY : wrapRect.top + wrapRect.height / 2) - wrapRect.top;
+
+  // canvas-coord under the focus point at the OLD zoom
+  const canvasX = (wrap.scrollLeft + cx) / (canvas._currentZoom || 1);
+  const canvasY = (wrap.scrollTop + cy) / (canvas._currentZoom || 1);
+
+  zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+  sizer.style.width = (BASE_SIZE * zoom) + 'px';
+  sizer.style.height = (BASE_SIZE * zoom) + 'px';
+  canvas.style.transform = `scale(${zoom})`;
+  canvas._currentZoom = zoom;
+
+  // adjust scroll so the focus point stays under the cursor / center
+  wrap.scrollLeft = canvasX * zoom - cx;
+  wrap.scrollTop = canvasY * zoom - cy;
+
+  document.getElementById('zoomLevel').textContent = Math.round(zoom * 100) + '%';
+}
+
+function zoomBy(delta, clientX, clientY) {
+  zoom += delta;
+  applyZoom(clientX, clientY);
+}
+
+function zoomReset() {
+  zoom = 1;
+  applyZoom();
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function load() {
+  const s = localStorage.getItem(STORAGE_KEY);
+  if (s) {
+    try { state = JSON.parse(s); } catch(e) {}
+  }
+}
+
+function groupColor(group) {
+  if (!group) return '#999';
+  const groups = [...new Set(state.guests.map(g => g.group).filter(Boolean))];
+  const idx = groups.indexOf(group);
+  return GROUP_COLORS[idx % GROUP_COLORS.length];
+}
+
+function addTable() {
+  const shape = document.getElementById('newShape').value;
+  const seats = parseInt(document.getElementById('newSeats').value) || 8;
+  const t = {
+    id: state.nextTableId++,
+    name: 'Tisch ' + state.nextTableId,
+    shape,
+    seats,
+    x: 200 + Math.random() * 300,
+    y: 200 + Math.random() * 300,
+    assignments: {}, // seatIndex -> guestId
+  };
+  state.tables.push(t);
+  save();
+  render();
+}
+
+function deleteSelectedTable() {
+  if (!selectedTableId) return;
+  if (!confirm('Tisch wirklich löschen?')) return;
+  state.tables = state.tables.filter(t => t.id !== selectedTableId);
+  selectedTableId = null;
+  document.getElementById('selectedTablePanel').style.display = 'none';
+  save();
+  render();
+}
+
+function selectTable(id) {
+  selectedTableId = id;
+  const t = state.tables.find(t => t.id === id);
+  if (!t) return;
+  document.getElementById('selectedTablePanel').style.display = 'block';
+  document.getElementById('tableName').value = t.name;
+  document.getElementById('tableShape').value = t.shape;
+  document.getElementById('tableSeats').value = t.seats;
+  render();
+}
+
+function updateSelectedTable() {
+  const t = state.tables.find(t => t.id === selectedTableId);
+  if (!t) return;
+  t.name = document.getElementById('tableName').value;
+  t.shape = document.getElementById('tableShape').value;
+  let newSeats = parseInt(document.getElementById('tableSeats').value);
+  if (isNaN(newSeats) || newSeats < 1) newSeats = 1;
+  if (newSeats > 30) newSeats = 30;
+  if (newSeats < t.seats) {
+    // Get currently assigned guests in seat order
+    const assigned = Object.keys(t.assignments)
+      .map(k => parseInt(k))
+      .sort((a, b) => a - b)
+      .map(idx => t.assignments[idx]);
+
+    if (assigned.length > newSeats) {
+      const removing = assigned.length - newSeats;
+      const ok = confirm(
+        `Tisch hat ${assigned.length} belegte Plätze, aber nur ${newSeats} bleiben übrig.\n` +
+        `${removing} Gast/Gäste wird/werden vom Tisch entfernt. Fortfahren?`
+      );
+      if (!ok) {
+        document.getElementById('tableSeats').value = t.seats;
+        return;
+      }
+    }
+
+    // Empty seats are removed first by compacting assigned guests into low indices.
+    // Only if assigned > newSeats do we drop the surplus (already confirmed above).
+    t.assignments = {};
+    assigned.slice(0, newSeats).forEach((guestId, idx) => {
+      t.assignments[idx] = guestId;
+    });
+  }
+  t.seats = newSeats;
+  save();
+  render();
+}
+
+function changeSeats(delta) {
+  const t = state.tables.find(t => t.id === selectedTableId);
+  if (!t) return;
+  const input = document.getElementById('tableSeats');
+  const next = Math.max(1, Math.min(30, t.seats + delta));
+  input.value = next;
+  updateSelectedTable();
+}
+
+function loadGuests() {
+  const text = document.getElementById('guestInput').value;
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  // Build map of existing by name
+  const existing = new Map(state.guests.map(g => [g.name, g]));
+  const newGuests = [];
+  for (const line of lines) {
+    const [namePart, groupPart] = line.split('|').map(s => s.trim());
+    if (!namePart) continue;
+    if (existing.has(namePart)) {
+      const g = existing.get(namePart);
+      g.group = groupPart || null;
+      newGuests.push(g);
+      existing.delete(namePart);
+    } else {
+      newGuests.push({
+        id: state.nextGuestId++,
+        name: namePart,
+        group: groupPart || null,
+      });
+    }
+  }
+  // Remove assignments of deleted guests
+  const removedIds = new Set([...existing.values()].map(g => g.id));
+  state.tables.forEach(t => {
+    Object.keys(t.assignments).forEach(k => {
+      if (removedIds.has(t.assignments[k])) delete t.assignments[k];
+    });
+  });
+  state.guests = newGuests;
+  save();
+  render();
+}
+
+function isPlaced(guestId) {
+  return state.tables.some(t =>
+    Object.values(t.assignments).includes(guestId)
+  );
+}
+
+function unassignGuest(guestId) {
+  state.tables.forEach(t => {
+    Object.keys(t.assignments).forEach(k => {
+      if (t.assignments[k] === guestId) delete t.assignments[k];
+    });
+  });
+}
+
+function assignGuestToSeat(guestId, tableId, seatIdx) {
+  unassignGuest(guestId);
+  const t = state.tables.find(t => t.id === tableId);
+  if (!t) return;
+  t.assignments[seatIdx] = guestId;
+  save();
+  render();
+}
+
+function clearSeat(tableId, seatIdx) {
+  const t = state.tables.find(t => t.id === tableId);
+  if (!t) return;
+  delete t.assignments[seatIdx];
+  save();
+  render();
+}
+
+function autoAssign() {
+  // Group guests by group
+  const byGroup = {};
+  const ungrouped = [];
+  for (const g of state.guests) {
+    if (isPlaced(g.id)) continue;
+    if (g.group) {
+      if (!byGroup[g.group]) byGroup[g.group] = [];
+      byGroup[g.group].push(g);
+    } else {
+      ungrouped.push(g);
+    }
+  }
+  // Sort groups by size descending
+  const groups = Object.entries(byGroup).sort((a,b) => b[1].length - a[1].length);
+  groups.push(['_solo', ungrouped]);
+
+  // For each group, find table with most consecutive free seats
+  for (const [, members] of groups) {
+    let i = 0;
+    while (i < members.length) {
+      const remaining = members.length - i;
+      // Find best table: most free seats, but at least try to fit group
+      let best = null;
+      for (const t of state.tables) {
+        const freeSeats = [];
+        for (let s = 0; s < t.seats; s++) {
+          if (!t.assignments[s]) freeSeats.push(s);
+        }
+        if (freeSeats.length === 0) continue;
+        const score = Math.min(freeSeats.length, remaining);
+        if (!best || score > best.score) {
+          best = { table: t, freeSeats, score };
+        }
+      }
+      if (!best) break; // no space left
+      const toPlace = Math.min(best.freeSeats.length, remaining);
+      for (let k = 0; k < toPlace; k++) {
+        best.table.assignments[best.freeSeats[k]] = members[i + k].id;
+      }
+      i += toPlace;
+    }
+  }
+  save();
+  render();
+}
+
+function resetAll() {
+  state = { tables: [], guests: [], nextTableId: 1, nextGuestId: 1 };
+  selectedTableId = null;
+  document.getElementById('selectedTablePanel').style.display = 'none';
+  document.getElementById('guestInput').value = '';
+  save();
+  render();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'tischplan.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      state = JSON.parse(e.target.result);
+      save();
+      render();
+    } catch (err) {
+      alert('Ungültige Datei');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// --- Rendering ---
+function render() {
+  renderCanvas();
+  renderGuestLists();
+  renderStats();
+  renderGuestInput();
+}
+
+function renderGuestInput() {
+  // Only update if empty (don't override user typing)
+  const ta = document.getElementById('guestInput');
+  if (!ta.value && state.guests.length > 0) {
+    ta.value = state.guests.map(g => g.group ? `${g.name} | ${g.group}` : g.name).join('\n');
+  }
+}
+
+function renderCanvas() {
+  const canvas = document.getElementById('canvas');
+  canvas.innerHTML = '';
+  for (const t of state.tables) {
+    const el = document.createElement('div');
+    el.className = 'table-el' + (selectedTableId === t.id ? ' selected' : '');
+    el.style.left = t.x + 'px';
+    el.style.top = t.y + 'px';
+
+    // size depends on seats
+    const tableSize = Math.max(80, 60 + t.seats * 8);
+    const radius = tableSize / 2 + 30;
+    const totalSize = (radius + 22) * 2;
+
+    const wrap = document.createElement('div');
+    wrap.style.position = 'relative';
+    wrap.style.width = totalSize + 'px';
+    wrap.style.height = totalSize + 'px';
+
+    const shape = document.createElement('div');
+    shape.className = 'table-shape ' + t.shape;
+    shape.style.width = tableSize + 'px';
+    shape.style.height = tableSize + 'px';
+    shape.style.position = 'absolute';
+    shape.style.left = (totalSize/2 - tableSize/2) + 'px';
+    shape.style.top = (totalSize/2 - tableSize/2) + 'px';
+    shape.style.flexDirection = 'column';
+
+    const nameEl = document.createElement('div');
+    nameEl.textContent = t.name;
+    shape.appendChild(nameEl);
+
+    const occupied = Object.keys(t.assignments).filter(k => parseInt(k) < t.seats).length;
+    const countEl = document.createElement('div');
+    countEl.textContent = `${occupied}/${t.seats}`;
+    countEl.style.fontSize = '11px';
+    countEl.style.fontWeight = '500';
+    countEl.style.opacity = '0.85';
+    countEl.style.marginTop = '2px';
+    shape.appendChild(countEl);
+
+    wrap.appendChild(shape);
+
+    // seats
+    for (let i = 0; i < t.seats; i++) {
+      const angle = (i / t.seats) * Math.PI * 2 - Math.PI / 2;
+      const sx = totalSize/2 + Math.cos(angle) * radius - 18;
+      const sy = totalSize/2 + Math.sin(angle) * radius - 18;
+      const seat = document.createElement('div');
+      seat.className = 'seat';
+      seat.style.left = sx + 'px';
+      seat.style.top = sy + 'px';
+
+      const guestId = t.assignments[i];
+      if (guestId) {
+        const guest = state.guests.find(g => g.id === guestId);
+        if (guest) {
+          seat.classList.add('occupied');
+          seat.textContent = shortName(guest.name);
+          seat.title = guest.name + (guest.group ? ' (' + guest.group + ')' : '');
+          if (guest.group) {
+            seat.style.background = groupColor(guest.group);
+            seat.style.borderColor = darken(groupColor(guest.group));
+          }
+        }
+      } else {
+        seat.textContent = i + 1;
+      }
+
+      seat.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        handleSeatClick(t.id, i);
+      });
+      seat.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        seat.classList.add('drop-hover');
+      });
+      seat.addEventListener('dragleave', () => {
+        seat.classList.remove('drop-hover');
+      });
+      seat.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        seat.classList.remove('drop-hover');
+        if (dragGuestId !== null) {
+          assignGuestToSeat(dragGuestId, t.id, i);
+          dragGuestId = null;
+        }
+      });
+
+      wrap.appendChild(seat);
+    }
+
+    el.appendChild(wrap);
+    canvas.appendChild(el);
+
+    makeDraggable(el, t);
+  }
+}
+
+function shortName(name) {
+  const parts = name.split(' ');
+  if (parts.length === 1) return parts[0].slice(0, 6);
+  return parts[0][0] + parts[parts.length-1][0];
+}
+
+function darken(hex) {
+  const c = hex.replace('#','');
+  const r = Math.max(0, parseInt(c.substr(0,2),16) - 40);
+  const g = Math.max(0, parseInt(c.substr(2,2),16) - 40);
+  const b = Math.max(0, parseInt(c.substr(4,2),16) - 40);
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+function handleSeatClick(tableId, seatIdx) {
+  const t = state.tables.find(t => t.id === tableId);
+  if (!t) return;
+  selectTable(tableId);
+  const current = t.assignments[seatIdx];
+  if (current) {
+    if (confirm('Sitz freigeben?')) clearSeat(tableId, seatIdx);
+    return;
+  }
+  if (state.guests.length === 0) {
+    alert('Bitte zuerst Gäste in der Liste eintragen.');
+    return;
+  }
+  openPicker(tableId, seatIdx);
+}
+
+// --- Guest picker ---
+let pickerContext = null; // { tableId, seatIdx }
+let pickerActiveIdx = 0;
+
+function openPicker(tableId, seatIdx) {
+  pickerContext = { tableId, seatIdx };
+  pickerActiveIdx = 0;
+  document.getElementById('pickerSearch').value = '';
+  document.getElementById('pickerOverlay').classList.add('open');
+  renderPickerList();
+  setTimeout(() => document.getElementById('pickerSearch').focus(), 0);
+}
+
+function closePicker() {
+  pickerContext = null;
+  document.getElementById('pickerOverlay').classList.remove('open');
+}
+
+function getPickerCandidates() {
+  const q = document.getElementById('pickerSearch').value.trim().toLowerCase();
+  const unplaced = state.guests.filter(g => !isPlaced(g.id));
+  unplaced.sort((a,b) => {
+    if (a.group !== b.group) return (a.group||'zzz').localeCompare(b.group||'zzz');
+    return a.name.localeCompare(b.name);
+  });
+  if (!q) return unplaced;
+  return unplaced.filter(g =>
+    g.name.toLowerCase().includes(q) ||
+    (g.group && g.group.toLowerCase().includes(q))
+  );
+}
+
+function renderPickerList() {
+  const list = document.getElementById('pickerList');
+  const items = getPickerCandidates();
+  if (pickerActiveIdx >= items.length) pickerActiveIdx = Math.max(0, items.length - 1);
+  list.innerHTML = '';
+  if (items.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'picker-empty';
+    empty.textContent = state.guests.every(g => isPlaced(g.id))
+      ? 'Alle Gäste sind bereits platziert.'
+      : 'Keine Treffer.';
+    list.appendChild(empty);
+    return;
+  }
+  items.forEach((g, i) => {
+    const el = document.createElement('div');
+    el.className = 'picker-item' + (i === pickerActiveIdx ? ' active' : '');
+    const left = document.createElement('span');
+    if (g.group) {
+      const dot = document.createElement('span');
+      dot.className = 'group-color';
+      dot.style.background = groupColor(g.group);
+      left.appendChild(dot);
+    }
+    left.appendChild(document.createTextNode(g.name));
+    el.appendChild(left);
+    if (g.group) {
+      const tag = document.createElement('span');
+      tag.className = 'group-tag';
+      tag.textContent = g.group;
+      el.appendChild(tag);
+    }
+    el.addEventListener('click', () => pickGuest(g.id));
+    el.addEventListener('mouseenter', () => {
+      pickerActiveIdx = i;
+      [...list.children].forEach((c,ci) => c.classList.toggle('active', ci === i));
+    });
+    list.appendChild(el);
+  });
+}
+
+function pickGuest(guestId) {
+  if (!pickerContext) return;
+  assignGuestToSeat(guestId, pickerContext.tableId, pickerContext.seatIdx);
+  closePicker();
+}
+
+function handlePickerKey(ev) {
+  const items = getPickerCandidates();
+  if (ev.key === 'Escape') {
+    ev.preventDefault();
+    closePicker();
+  } else if (ev.key === 'ArrowDown') {
+    ev.preventDefault();
+    pickerActiveIdx = Math.min(items.length - 1, pickerActiveIdx + 1);
+    renderPickerList();
+  } else if (ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    pickerActiveIdx = Math.max(0, pickerActiveIdx - 1);
+    renderPickerList();
+  } else if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (items[pickerActiveIdx]) pickGuest(items[pickerActiveIdx].id);
+  }
+}
+
+function makeDraggable(el, table) {
+  let startX, startY, startLeft, startTop, moved = false;
+  el.addEventListener('mousedown', (ev) => {
+    if (ev.target.classList.contains('seat')) return;
+    ev.preventDefault();
+    startX = ev.clientX;
+    startY = ev.clientY;
+    startLeft = table.x;
+    startTop = table.y;
+    moved = false;
+
+    function onMove(e) {
+      const dx = (e.clientX - startX) / zoom;
+      const dy = (e.clientY - startY) / zoom;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      table.x = Math.max(0, startLeft + dx);
+      table.y = Math.max(0, startTop + dy);
+      el.style.left = table.x + 'px';
+      el.style.top = table.y + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (moved) save();
+      else selectTable(table.id);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function renderGuestLists() {
+  const unplacedEl = document.getElementById('unplacedList');
+  const placedEl = document.getElementById('placedList');
+  unplacedEl.innerHTML = '';
+  placedEl.innerHTML = '';
+
+  // sort by group then name
+  const sorted = [...state.guests].sort((a,b) => {
+    if (a.group !== b.group) return (a.group||'zzz').localeCompare(b.group||'zzz');
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const g of sorted) {
+    const el = document.createElement('div');
+    el.className = 'guest';
+    const placed = isPlaced(g.id);
+    if (placed) el.classList.add('placed');
+
+    const left = document.createElement('span');
+    if (g.group) {
+      const dot = document.createElement('span');
+      dot.className = 'group-color';
+      dot.style.background = groupColor(g.group);
+      left.appendChild(dot);
+    }
+    left.appendChild(document.createTextNode(g.name));
+    el.appendChild(left);
+
+    if (g.group) {
+      const tag = document.createElement('span');
+      tag.className = 'group-tag';
+      tag.textContent = g.group;
+      el.appendChild(tag);
+    }
+
+    if (!placed) {
+      el.draggable = true;
+      el.addEventListener('dragstart', () => { dragGuestId = g.id; });
+      el.addEventListener('dragend', () => { dragGuestId = null; });
+      unplacedEl.appendChild(el);
+    } else {
+      el.title = 'Klick: freigeben';
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => {
+        if (confirm(`${g.name} vom Sitz nehmen?`)) {
+          unassignGuest(g.id);
+          save();
+          render();
+        }
+      });
+      placedEl.appendChild(el);
+    }
+  }
+
+  if (unplacedEl.children.length === 0) {
+    unplacedEl.innerHTML = '<p style="font-size:12px;color:#586069;margin:6px 0;">Alle platziert ✓</p>';
+  }
+  if (placedEl.children.length === 0) {
+    placedEl.innerHTML = '<p style="font-size:12px;color:#586069;margin:6px 0;">Noch niemand platziert</p>';
+  }
+}
+
+function renderStats() {
+  const placed = state.guests.filter(g => isPlaced(g.id)).length;
+  const totalSeats = state.tables.reduce((s,t) => s + t.seats, 0);
+  document.getElementById('statPlaced').textContent = placed;
+  document.getElementById('statUnplaced').textContent = state.guests.length - placed;
+  document.getElementById('statSeats').textContent = totalSeats;
+}
+
+// Pan canvas by click+hold on empty area; simple click (no drag) deselects
+document.getElementById('canvas').addEventListener('mousedown', (ev) => {
+  if (ev.target.id !== 'canvas') return;
+  ev.preventDefault();
+  const wrap = document.getElementById('canvas-wrap');
+  const startX = ev.clientX;
+  const startY = ev.clientY;
+  const startScrollLeft = wrap.scrollLeft;
+  const startScrollTop = wrap.scrollTop;
+  let moved = false;
+  document.body.style.cursor = 'grabbing';
+
+  function onMove(e) {
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!moved && Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+    wrap.scrollLeft = startScrollLeft - dx;
+    wrap.scrollTop = startScrollTop - dy;
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    if (!moved) {
+      selectedTableId = null;
+      document.getElementById('selectedTablePanel').style.display = 'none';
+      render();
+    }
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+
+// Cursor hint when hovering empty canvas
+document.getElementById('canvas').addEventListener('mousemove', (ev) => {
+  if (ev.target.id === 'canvas' && document.body.style.cursor !== 'grabbing') {
+    document.getElementById('canvas').style.cursor = 'grab';
+  }
+});
+
+// Ctrl/Cmd + wheel = zoom toward cursor; plain wheel = scroll
+document.getElementById('canvas-wrap').addEventListener('wheel', (ev) => {
+  if (!ev.ctrlKey && !ev.metaKey) return;
+  ev.preventDefault();
+  const delta = -Math.sign(ev.deltaY) * 0.15;
+  zoomBy(delta, ev.clientX, ev.clientY);
+}, { passive: false });
+
+// Keyboard shortcuts: +/-/0
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.matches('input, textarea, select')) return;
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key === '+' || ev.key === '=')) {
+    ev.preventDefault(); zoomBy(0.15);
+  } else if ((ev.ctrlKey || ev.metaKey) && ev.key === '-') {
+    ev.preventDefault(); zoomBy(-0.15);
+  } else if ((ev.ctrlKey || ev.metaKey) && ev.key === '0') {
+    ev.preventDefault(); zoomReset();
+  }
+});
+
+load();
+applyZoom();
+render();
+</script>
+</body>
+</html>
