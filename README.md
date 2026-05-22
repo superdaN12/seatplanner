@@ -2,7 +2,7 @@
 
 Eine einfache Web-App zur Gestaltung von Tisch- und Sitzplänen — keine Installation, kein Build-Schritt. Einfach `index.html` im Browser öffnen.
 
-Live: **https://superdan12.github.io/seatplanner/**
+Live: **https://dbackhove.github.io/seatplanner/**
 
 ## Features
 
