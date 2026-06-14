@@ -474,6 +474,10 @@
     background: #28a745;
     border-color: #1f7a34;
     color: white;
+    cursor: grab;
+  }
+  .seat.occupied:active {
+    cursor: grabbing;
   }
   .seat.drop-hover {
     background: #ffd33d;
@@ -1029,6 +1033,7 @@ let state = freshPlanState();
 
 let selectedTableId = null;
 let dragGuestId = null;
+let dragFromSeat = null; // { tableId, seatIdx } – für Sitz-zu-Sitz-Drag
 let zoom = 1;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
@@ -1818,6 +1823,24 @@ function unassignGuest(guestId) {
   });
 }
 
+function moveOrSwapSeat(from, to) {
+  if (from.tableId === to.tableId && from.seatIdx === to.seatIdx) return;
+  const ts = state.tables.find(t => t.id === from.tableId);
+  const tt = state.tables.find(t => t.id === to.tableId);
+  if (!ts || !tt) return;
+  const movingGuest = ts.assignments[from.seatIdx];
+  if (!movingGuest) return;
+  const targetGuest = tt.assignments[to.seatIdx];
+  tt.assignments[to.seatIdx] = movingGuest;
+  if (targetGuest) {
+    ts.assignments[from.seatIdx] = targetGuest; // Tausch
+  } else {
+    delete ts.assignments[from.seatIdx];         // Verschieben
+  }
+  save();
+  render();
+}
+
 function assignGuestToSeat(guestId, tableId, seatIdx) {
   unassignGuest(guestId);
   const t = state.tables.find(t => t.id === tableId);
@@ -2228,6 +2251,13 @@ function renderCanvas() {
             seat.style.background = groupColor(guest.group);
             seat.style.borderColor = darken(groupColor(guest.group));
           }
+          // Belegte Sitze können per Drag verschoben/getauscht werden
+          seat.draggable = true;
+          seat.addEventListener('dragstart', (ev) => {
+            ev.stopPropagation();
+            dragFromSeat = { tableId: t.id, seatIdx: i };
+          });
+          seat.addEventListener('dragend', () => { dragFromSeat = null; });
         }
       } else {
         seat.textContent = i + 1;
@@ -2247,7 +2277,10 @@ function renderCanvas() {
       seat.addEventListener('drop', (ev) => {
         ev.preventDefault();
         seat.classList.remove('drop-hover');
-        if (dragGuestId !== null) {
+        if (dragFromSeat) {
+          moveOrSwapSeat(dragFromSeat, { tableId: t.id, seatIdx: i });
+          dragFromSeat = null;
+        } else if (dragGuestId !== null) {
           assignGuestToSeat(dragGuestId, t.id, i);
           dragGuestId = null;
         }
